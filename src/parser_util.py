@@ -79,4 +79,9 @@ def get_parser():
                         action='store_true',
                         help='enables cuda')
 
+    parser.add_argument('-dType', '--data_type',
+                        type=str,
+                        help='select data type',
+                        default='omniglot')
+
     return parser

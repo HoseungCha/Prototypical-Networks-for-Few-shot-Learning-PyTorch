@@ -2,14 +2,22 @@
 from prototypical_batch_sampler import PrototypicalBatchSampler
 from prototypical_loss import prototypical_loss as loss_fn
 from omniglot_dataset import OmniglotDataset
+from EMG_FE_dataset import EMG_dataset
+
 from protonet import ProtoNet
 from parser_util import get_parser
 
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+
+from chs import util_figure
 from tqdm import tqdm
 import numpy as np
 import torch
 import os
 
+# from util_plot import util_plot
 
 def init_seed(opt):
     '''
@@ -22,7 +30,11 @@ def init_seed(opt):
 
 
 def init_dataset(opt, mode):
-    dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
+    if opt.data_type == 'omniglot':
+        dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
+    else:
+        dataset = EMG_dataset(mode=mode, root=opt.dataset_root)
+
     n_classes = len(np.unique(dataset.y))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
         raise(Exception('There are not enough classes in the dataset in order ' +

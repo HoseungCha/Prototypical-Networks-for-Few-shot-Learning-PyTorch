@@ -1,6 +1,10 @@
 # coding=utf-8
 import numpy as np
 import torch
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+# from util_plot import util_plot
 
 
 class PrototypicalBatchSampler(object):
@@ -44,6 +48,12 @@ class PrototypicalBatchSampler(object):
             label_idx = np.argwhere(self.classes == label).item()
             self.indexes[label_idx, np.where(np.isnan(self.indexes[label_idx]))[0][0]] = idx
             self.numel_per_class[label_idx] += 1
+        # plt.figure()
+        # plt.cla()
+        # plt.plot(self.numel_per_class.numpy())
+        #
+        # plt.cla()
+        # plt.plot(self.indexes.numpy())
 
     def __iter__(self):
         '''
@@ -59,7 +69,8 @@ class PrototypicalBatchSampler(object):
             for i, c in enumerate(self.classes[c_idxs]):
                 s = slice(i * spc, (i + 1) * spc)
                 # FIXME when torch.argwhere will exists
-                label_idx = torch.arange(len(self.classes)).long()[self.classes == c].item()
+                # label_idx = torch.arange(len(self.classes)).long()[self.classes == c].item()
+                label_idx = int(c)
                 sample_idxs = torch.randperm(self.numel_per_class[label_idx])[:spc]
                 batch[s] = self.indexes[label_idx][sample_idxs]
             batch = batch[torch.randperm(len(batch))]

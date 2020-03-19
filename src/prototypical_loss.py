@@ -66,11 +66,14 @@ def prototypical_loss(input, target, n_support):
 
     support_idxs = list(map(supp_idxs, classes))
 
-    prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs])
+    # FIXME sd
+    prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs]) # support vector의 평균
     # FIXME when torch will support where as np
     query_idxs = torch.stack(list(map(lambda c: target_cpu.eq(c).nonzero()[n_support:], classes))).view(-1)
 
     query_samples = input.to('cpu')[query_idxs]
+
+    # distance between samples in query samples, prototypes
     dists = euclidean_dist(query_samples, prototypes)
 
     log_p_y = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1)

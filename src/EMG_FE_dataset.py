@@ -7,7 +7,6 @@ import shutil
 import errno
 import torch
 import os
-# from ShowLastPos import ShowLastPosClass
 
 '''
 Inspired by https://github.com/pytorch/vision/pull/46
@@ -16,20 +15,19 @@ Inspired by https://github.com/pytorch/vision/pull/46
 IMG_CACHE = {}
 
 
-class OmniglotDataset(data.Dataset):
-    vinalys_baseurl = 'https://raw.githubusercontent.com/jakesnell/prototypical-networks/master/data/omniglot/splits/vinyals/'
-    vinyals_split_sizes = {
-        'test': vinalys_baseurl + 'test.txt',
-        'train': vinalys_baseurl + 'train.txt',
-        'trainval': vinalys_baseurl + 'trainval.txt',
-        'val': vinalys_baseurl + 'val.txt',
-    }
-
-    urls = [
-        'https://github.com/brendenlake/omniglot/raw/master/python/images_background.zip',
-        'https://github.com/brendenlake/omniglot/raw/master/python/images_evaluation.zip'
-    ]
-    splits_folder = os.path.join('splits', 'vinyals')
+class EMG_dataset(data.Dataset):
+    # vinalys_baseurl = 'https://raw.githubusercontent.com/jakesnell/prototypical-networks/master/data/omniglot/splits/vinyals/'
+    # vinyals_split_sizes = {
+    #     'test': vinalys_baseurl + 'test.txt',
+    #     'train': vinalys_baseurl + 'train.txt',
+    #     'trainval': vinalys_baseurl + 'trainval.txt',
+    #     'val': vinalys_baseurl + 'val.txt',
+    # }
+    # urls = [
+    #     'https://github.com/brendenlake/omniglot/raw/master/python/images_background.zip',
+    #     'https://github.com/brendenlake/omniglot/raw/master/python/images_evaluation.zip'
+    # ]
+    splits_folder = os.path.join('splits', 'chs')
     raw_folder = 'raw'
     processed_folder = 'data'
 
@@ -42,30 +40,30 @@ class OmniglotDataset(data.Dataset):
         - target_transform: how to transform the target
         - download: need to download the dataset
         '''
-        super(OmniglotDataset, self).__init__()
+        super(EMG_dataset, self).__init__()
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
 
-        if download:
-            self.download()
+        # if download:
+        #     self.download()
+        #
+        # if not self._check_exists():
+        #     raise RuntimeError(
+        #         'Dataset not found. You can use download=True to download it')
+        # self.classes = get_current_classes(os.path.join(
+        #     self.root, self.splits_folder, mode + '.txt'))
+        # self.all_items = find_items(os.path.join(
+        #     self.root, self.processed_folder), self.classes)
 
-        if not self._check_exists():
-            raise RuntimeError(
-                'Dataset not found. You can use download=True to download it')
-        self.classes = get_current_classes(os.path.join(
-            self.root, self.splits_folder, mode + '.txt'))
-        self.all_items = find_items(os.path.join(
-            self.root, self.processed_folder), self.classes)
-
-        self.idx_classes = index_classes(self.all_items)
+        # self.idx_classes = index_classes(self.all_items)
 
         paths, self.y = zip(*[self.get_path_label(pl)
                               for pl in range(len(self))])
 
         self.x = map(load_img, paths, range(len(paths)))
         self.x = list(self.x)
-        a = 1
+
     def __getitem__(self, idx):
         x = self.x[idx]
         if self.transform:
@@ -143,7 +141,7 @@ def find_items(root_dir, classes):
             lr = len(r)
             label = r[lr - 2] + os.sep + r[lr - 1]
             for rot in rots:
-                if label + rot in classes and (f.endswith("png")):
+                if label + rot in classes and (f.endswith("mat")):
                     retour.extend([(f, label, root, rot)])
     print("== Dataset: Found %d items " % len(retour))
     return retour
