@@ -2,9 +2,12 @@
 from prototypical_batch_sampler import PrototypicalBatchSampler
 from prototypical_loss import prototypical_loss as loss_fn
 from omniglot_dataset import OmniglotDataset
-from EMG_FE_dataset import EMG_dataset
+# from EMG_FE_dataset import EMG_dataset
 
 from protonet import ProtoNet
+from riemaniannet import RiemanianNet
+
+
 from parser_util import get_parser
 
 import matplotlib
@@ -16,6 +19,7 @@ from tqdm import tqdm
 import numpy as np
 import torch
 import os
+import pyriemann
 
 # from util_plot import util_plot
 
@@ -72,6 +76,13 @@ def init_protonet(opt):
     model = ProtoNet().to(device)
     return model
 
+def init_protonet(opt):
+    '''
+    Initialize the RiemanianNet
+    '''
+    device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
+    model = RiemanianNet().to(device)
+    return model
 
 def init_optim(opt, model):
     '''

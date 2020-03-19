@@ -2,7 +2,10 @@
 import torch
 from torch.nn import functional as F
 from torch.nn.modules import Module
-
+import scipy
+from numpy.core.numerictypes import typecodes
+import numpy
+import pyriemann
 
 class PrototypicalLoss(Module):
     '''
@@ -14,24 +17,6 @@ class PrototypicalLoss(Module):
 
     def forward(self, input, target):
         return prototypical_loss(input, target, self.n_support)
-
-
-def euclidean_dist(x, y):
-    '''
-    Compute euclidean distance between two tensors
-    '''
-    # x: N x D
-    # y: M x D
-    n = x.size(0)
-    m = y.size(0)
-    d = x.size(1)
-    if d != y.size(1):
-        raise Exception
-
-    x = x.unsqueeze(1).expand(n, m, d)
-    y = y.unsqueeze(0).expand(n, m, d)
-
-    return torch.pow(x - y, 2).sum(2)
 
 
 def prototypical_loss(input, target, n_support):
@@ -66,8 +51,14 @@ def prototypical_loss(input, target, n_support):
 
     support_idxs = list(map(supp_idxs, classes))
 
-    # FIXME sd
-    prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs]) # support vector의 평균
+    # FIXME get supprots using Riemannian mean
+    # prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs]) # support vector의 평균
+    # riemannain mean
+    for idx_list in support_idxs:
+        mean_riemann(input_cpu[idx_list])
+
+    prototypes = torch.stack([input_cpu[idx_list].mean(0) for idx_list in support_idxs])  # support vector의 평균
+
     # FIXME when torch will support where as np
     query_idxs = torch.stack(list(map(lambda c: target_cpu.eq(c).nonzero()[n_support:], classes))).view(-1)
 
@@ -87,3 +78,192 @@ def prototypical_loss(input, target, n_support):
     acc_val = y_hat.eq(target_inds.squeeze()).float().mean()
 
     return loss_val,  acc_val
+
+def mean_riemann(covmats, tol=10e-9, maxiter=50, init=None,
+                 sample_weight=None):
+    """Return the mean covariance matrix according to the Riemannian metric.
+
+    The procedure is similar to a gradient descent minimizing the sum of
+    riemannian distance to the mean.
+
+    .. math::
+            \mathbf{C} = \\arg\min{(\sum_i \delta_R ( \mathbf{C} , \mathbf{C}_i)^2)}  # noqa
+
+    :param covmats: Covariance matrices set, Ntrials X Nchannels X Nchannels
+    :param tol: the tolerance to stop the gradient descent
+    :param maxiter: The maximum number of iteration, default 50
+    :param init: A covariance matrix used to initialize the gradient descent. If None the Arithmetic mean is used
+    :param sample_weight: the weight of each sample
+    :returns: the mean covariance matrix
+
+    """
+    # init
+    sample_weight = _get_sample_weight(sample_weight, covmats)
+    Nt, Ne, Ne = covmats.shape
+    if init is None:
+        C = torch.mean(covmats, axis=0)
+    else:
+        C = init
+    k = 0
+    nu = 1.0
+    tau = torch.finfo(torch.float64).max
+    crit = torch.finfo(torch.float64).max
+    # stop when J<10^-9 or max iteration = 50
+    while (crit > tol) and (k < maxiter) and (nu > tol):
+        k = k + 1
+        C12 = sqrtm(C)
+        Cm12 = invsqrtm(C)
+        J = torch.zeros((Ne, Ne))
+
+        for index in range(Nt):
+            tmp = torch.dot(torch.dot(Cm12, covmats[index, :, :]), Cm12)
+            J += sample_weight[index] * logm(tmp)
+
+        crit = torch.linalg.norm(J, ord='fro')
+        h = nu * crit
+        C = torch.dot(torch.dot(C12, expm(nu * J)), C12)
+        if h < tau:
+            nu = 0.95 * nu
+            tau = h
+        else:
+            nu = 0.5 * nu
+
+    return C
+
+def _get_sample_weight(sample_weight, data):
+    """Get the sample weights.
+
+    If none provided, weights init to 1. otherwise, weights are normalized.
+    """
+    if sample_weight is None:
+        sample_weight = torch.ones(data.shape[0])
+    if len(sample_weight) != data.shape[0]:
+        raise ValueError("len of sample_weight must be equal to len of data.")
+    sample_weight /= torch.sum(sample_weight)
+    return sample_weight
+
+def euclidean_dist(x, y):
+    '''
+    Compute euclidean distance between two tensors
+    '''
+    # x: N x D
+    # y: M x D
+    n = x.size(0)
+    m = y.size(0)
+    d = x.size(1)
+    if d != y.size(1):
+        raise Exception
+
+    x = x.unsqueeze(1).expand(n, m, d)
+    y = y.unsqueeze(0).expand(n, m, d)
+
+    return torch.pow(x - y, 2).sum(2)
+
+
+def _matrix_operator(Ci, operator):
+    """matrix equivalent of an operator."""
+    if Ci.dtype.char in typecodes['AllFloat'] and not torch.isfinite(Ci).all():
+        raise ValueError("Covariance matrices must be positive definite. Add regularization to avoid this error.")
+    eigvals, eigvects = scipy.linalg.eigh(Ci, check_finite=False)
+    eigvals = torch.diag(operator(eigvals))
+    Out = torch.dot(torch.dot(eigvects, eigvals), eigvects.T)
+    return Out
+
+
+def sqrtm(Ci):
+    """Return the matrix square root of a covariance matrix defined by :
+
+    .. math::
+            \mathbf{C} = \mathbf{V} \left( \mathbf{\Lambda} \\right)^{1/2} \mathbf{V}^T
+
+    where :math:`\mathbf{\Lambda}` is the diagonal matrix of eigenvalues
+    and :math:`\mathbf{V}` the eigenvectors of :math:`\mathbf{Ci}`
+
+    :param Ci: the coavriance matrix
+    :returns: the matrix square root
+
+    """
+    return _matrix_operator(Ci, torch.sqrt)
+
+
+def logm(Ci):
+    """Return the matrix logarithm of a covariance matrix defined by :
+
+    .. math::
+            \mathbf{C} = \mathbf{V} \log{(\mathbf{\Lambda})} \mathbf{V}^T
+
+    where :math:`\mathbf{\Lambda}` is the diagonal matrix of eigenvalues
+    and :math:`\mathbf{V}` the eigenvectors of :math:`\mathbf{Ci}`
+
+    :param Ci: the coavriance matrix
+    :returns: the matrix logarithm
+
+    """
+    return _matrix_operator(Ci, torch.log)
+
+
+def expm(Ci):
+    """Return the matrix exponential of a covariance matrix defined by :
+
+    .. math::
+            \mathbf{C} = \mathbf{V} \exp{(\mathbf{\Lambda})} \mathbf{V}^T
+
+    where :math:`\mathbf{\Lambda}` is the diagonal matrix of eigenvalues
+    and :math:`\mathbf{V}` the eigenvectors of :math:`\mathbf{Ci}`
+
+    :param Ci: the coavriance matrix
+    :returns: the matrix exponential
+
+    """
+    return _matrix_operator(Ci, torch.exp)
+
+
+def invsqrtm(Ci):
+    """Return the inverse matrix square root of a covariance matrix defined by :
+
+    .. math::
+            \mathbf{C} = \mathbf{V} \left( \mathbf{\Lambda} \\right)^{-1/2} \mathbf{V}^T
+
+    where :math:`\mathbf{\Lambda}` is the diagonal matrix of eigenvalues
+    and :math:`\mathbf{V}` the eigenvectors of :math:`\mathbf{Ci}`
+
+    :param Ci: the coavriance matrix
+    :returns: the inverse matrix square root
+
+    """
+    isqrt = lambda x: 1. / torch.sqrt(x)
+    return _matrix_operator(Ci, isqrt)
+
+
+def powm(Ci, alpha):
+    """Return the matrix power :math:`\\alpha` of a covariance matrix defined by :
+
+    .. math::
+            \mathbf{C} = \mathbf{V} \left( \mathbf{\Lambda} \\right)^{\\alpha} \mathbf{V}^T
+
+    where :math:`\mathbf{\Lambda}` is the diagonal matrix of eigenvalues
+    and :math:`\mathbf{V}` the eigenvectors of :math:`\mathbf{Ci}`
+
+    :param Ci: the coavriance matrix
+    :param alpha: the power to apply
+    :returns: the matrix power
+
+    """
+    power = lambda x: x**alpha
+    return _matrix_operator(Ci, power)
+
+
+def _matrix_operator(Ci, operator):
+    """matrix equivalent of an operator."""
+    # Fixme "Ci.dtype.char in typecodes['AllFloat'] and" is exlcuded, which may be ported later.
+    if not torch.isfinite(Ci).all():
+        raise ValueError("Covariance matrices must be positive definite. "
+                         "Add regularization to avoid this error.")
+    # eigvals, eigvects = scipy.linalg.eigh(Ci, check_finite=False)
+    eigvals, eigvects = torch.symeig(Ci, eigenvectors=True)
+    torch.sqrt
+    eigvals = torch.diag(operator(eigvals))
+
+    # Out = torch.dot(torch.dot(eigvects, eigvals), eigvects.T)
+    Out = torch.mm(torch.mm(eigvects, eigvals.unsqueeze(1)),eigvects.T).squeeze()
+    return Out
