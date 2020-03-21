@@ -1,5 +1,7 @@
 # coding=utf-8
 from prototypical_batch_sampler import PrototypicalBatchSampler
+from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
+
 from prototypical_loss import prototypical_loss as loss_fn
 from omniglot_dataset import OmniglotDataset
 from EMG_FE_dataset import EMG_dataset
@@ -11,12 +13,13 @@ import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 
-from chs import util_figure
+from utils import core
 from tqdm import tqdm
 import numpy as np
 import torch
 import os
 
+import pyriemann
 # from util_plot import util_plot
 
 def init_seed(opt):
@@ -30,10 +33,10 @@ def init_seed(opt):
 
 
 def init_dataset(opt, mode):
-    if opt.data_type == 'omniglot':
+    if opt.dataset_type == 'omniglot':
         dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
     else:
-        dataset = EMG_dataset(mode=mode, root=opt.dataset_root)
+        dataset = EMG_dataset(mode=mode, option=opt)
 
     n_classes = len(np.unique(dataset.y))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
@@ -43,7 +46,7 @@ def init_dataset(opt, mode):
     return dataset
 
 
-def init_sampler(opt, labels, mode):
+def init_sampler(opt, dataset, mode):
     if 'train' in mode:
         classes_per_it = opt.classes_per_it_tr
         num_samples = opt.num_support_tr + opt.num_query_tr
@@ -51,15 +54,19 @@ def init_sampler(opt, labels, mode):
         classes_per_it = opt.classes_per_it_val
         num_samples = opt.num_support_val + opt.num_query_val
 
-    return PrototypicalBatchSampler(labels=labels,
-                                    classes_per_it=classes_per_it,
-                                    num_samples=num_samples,
-                                    iterations=opt.iterations)
+    if opt.dataset_type == 'omniglot':
+        returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
+                                 iterations=opt.iterations)
+    else:
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, labels=dataset.y,
+                                                ses=dataset.ses, win=dataset.win, sub =dataset.sub)
+
+    return returnSampler
 
 
 def init_dataloader(opt, mode):
     dataset = init_dataset(opt, mode)
-    sampler = init_sampler(opt, dataset.y, mode)
+    sampler = init_sampler(opt, dataset, mode)
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
     return dataloader
 

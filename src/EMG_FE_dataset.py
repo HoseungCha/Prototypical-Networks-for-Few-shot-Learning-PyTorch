@@ -7,7 +7,9 @@ import shutil
 import errno
 import torch
 import os
-
+import scipy.io as io
+from tqdm import tqdm
+import time
 '''
 Inspired by https://github.com/pytorch/vision/pull/46
 '''
@@ -16,22 +18,18 @@ IMG_CACHE = {}
 
 
 class EMG_dataset(data.Dataset):
-    # vinalys_baseurl = 'https://raw.githubusercontent.com/jakesnell/prototypical-networks/master/data/omniglot/splits/vinyals/'
-    # vinyals_split_sizes = {
-    #     'test': vinalys_baseurl + 'test.txt',
-    #     'train': vinalys_baseurl + 'train.txt',
-    #     'trainval': vinalys_baseurl + 'trainval.txt',
-    #     'val': vinalys_baseurl + 'val.txt',
-    # }
-    # urls = [
-    #     'https://github.com/brendenlake/omniglot/raw/master/python/images_background.zip',
-    #     'https://github.com/brendenlake/omniglot/raw/master/python/images_evaluation.zip'
-    # ]
-    splits_folder = os.path.join('splits', 'chs')
+
     raw_folder = 'raw'
     processed_folder = 'data'
+    nSub = 10
+    nFE = 11
+    nSes = 25
+    nWin = 41
 
-    def __init__(self, mode='train', root='..' + os.sep + 'dataset', transform=None, target_transform=None, download=True):
+
+
+    def __init__(self, mode='train', root='..' + os.sep + 'dataset_EMG',
+                 transform=None, target_transform=None, download=True, option=None):
         '''
         The items are (filename,category). The index of all the categories can be found in self.idx_classes
         Args:
@@ -44,25 +42,42 @@ class EMG_dataset(data.Dataset):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
+        dataset = {}
+        dataset['x'] = []
+        dataset['y'] = []
+        dataset['sub'] = []
+        dataset['ses'] = []
+        dataset['win'] = []
 
-        # if download:
-        #     self.download()
-        #
-        # if not self._check_exists():
-        #     raise RuntimeError(
-        #         'Dataset not found. You can use download=True to download it')
-        # self.classes = get_current_classes(os.path.join(
-        #     self.root, self.splits_folder, mode + '.txt'))
-        # self.all_items = find_items(os.path.join(
-        #     self.root, self.processed_folder), self.classes)
+        device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
 
-        # self.idx_classes = index_classes(self.all_items)
+        EMG_tensor_path = os.path.join(root,'data','EMG_tensor.pth')
+        if os.path.isfile(EMG_tensor_path) and not os.path.getsize(EMG_tensor_path)/(1024*1024) < 279: # datasetan mb
+            start_time = time.time()
+            dataset = torch.load(EMG_tensor_path)
+            print("Loading dataset Time... %.2fs" % (time.time()-start_time))
+        else:
+            for i in tqdm(range(self.nSub)):
+                for j in range(self.nFE):
+                    for k in range(self.nSes):
+                        for l in range(self.nWin):
+                            index = k * self.nWin + l
+                            temp_path = os.path.join(root, 'data',
+                                                     "Sub-%02d" % (i),
+                                                     "FE-%02d" % (j),
+                                                     "%04d.mat" % index)
+                            dataset['x'].append(torch.from_numpy(io.loadmat(temp_path)['segment']).float().to(device))
+                            dataset['sub'].append(i)
+                            dataset['y'].append(j)
+                            dataset['ses'].append(k)
+                            dataset['win'].append(l)
 
-        paths, self.y = zip(*[self.get_path_label(pl)
-                              for pl in range(len(self))])
-
-        self.x = map(load_img, paths, range(len(paths)))
-        self.x = list(self.x)
+            torch.save(dataset, EMG_tensor_path)
+        self.x = dataset['x']
+        self.y = dataset['y']
+        self.ses = dataset['ses']
+        self.win = dataset['win']
+        self.sub = dataset['sub']
 
     def __getitem__(self, idx):
         x = self.x[idx]

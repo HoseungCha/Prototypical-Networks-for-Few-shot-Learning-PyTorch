@@ -8,7 +8,9 @@ def get_parser():
     parser.add_argument('-root', '--dataset_root',
                         type=str,
                         help='path to dataset',
-                        default='..' + os.sep + 'dataset')
+                        default='..' + os.sep + 'dataset'
+                        #default='..' + os.sep + 'dataset_EMG'
+                        )
 
     parser.add_argument('-exp', '--experiment_root',
                         type=str,
@@ -17,7 +19,7 @@ def get_parser():
 
     parser.add_argument('-nep', '--epochs',
                         type=int,
-                        help='number of epochs to train for',
+                        help='number of epochs to train for, default=100',
                         default=100)
 
     parser.add_argument('-lr', '--learning_rate',
@@ -79,9 +81,25 @@ def get_parser():
                         action='store_true',
                         help='enables cuda')
 
-    parser.add_argument('-dType', '--data_type',
+    parser.add_argument('-dType', '--dataset_type',
                         type=str,
                         help='select data type',
                         default='omniglot')
+
+    parser.add_argument('-trSub', '--training_subject_index',
+                        type=str,
+                        help='select data type',
+                        default=list(range(8)))
+
+    parser.add_argument('-valSub', '--validation_subject_index',
+                        type=str,
+                        help='select data type',
+                        default=8)
+
+    parser.add_argument('-teSub', '--test_subject_index',
+                        type=str,
+                        help='select data type',
+                        default=9)
+
 
     return parser
