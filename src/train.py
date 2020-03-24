@@ -38,7 +38,7 @@ def init_dataset(opt, mode):
     else:
         dataset = EMG_dataset(mode=mode, option=opt)
 
-    n_classes = len(np.unique(dataset.y))
+    n_classes = len(np.unique(dataset.t))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
         raise(Exception('There are not enough classes in the dataset in order ' +
                         'to satisfy the chosen classes_per_it. Decrease the ' +
@@ -58,8 +58,11 @@ def init_sampler(opt, dataset, mode):
         returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
                                  iterations=opt.iterations)
     else:
-        returnSampler = EMG_FE_Classify_Sampler(option=opt, labels=dataset.y,
-                                                ses=dataset.ses, win=dataset.win, sub =dataset.sub)
+        index = {}
+        index['t'] = dataset.t
+        index['s'] = dataset.s
+        index['d'] = dataset.d
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, index = index)
 
     return returnSampler
 

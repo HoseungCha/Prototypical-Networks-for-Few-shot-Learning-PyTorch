@@ -44,10 +44,10 @@ class EMG_dataset(data.Dataset):
         self.target_transform = target_transform
         dataset = {}
         dataset['x'] = []
-        dataset['y'] = []
-        dataset['sub'] = []
-        dataset['ses'] = []
-        dataset['win'] = []
+        dataset['t'] = []
+        dataset['s'] = []
+        dataset['d'] = []
+        # dataset['win'] = []
 
         device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
 
@@ -57,27 +57,34 @@ class EMG_dataset(data.Dataset):
             dataset = torch.load(EMG_tensor_path)
             print("Loading dataset Time... %.2fs" % (time.time()-start_time))
         else:
-            for i in tqdm(range(self.nSub)):
-                for j in range(self.nFE):
+            for s in tqdm(range(self.nSub)):
+                for t in range(self.nFE):
                     for k in range(self.nSes):
                         for l in range(self.nWin):
-                            index = k * self.nWin + l
                             temp_path = os.path.join(root, 'data',
-                                                     "Sub-%02d" % (i),
-                                                     "FE-%02d" % (j),
-                                                     "%04d.mat" % index)
+                                                     "Sub-%02d" % (s),
+                                                     "FE-%02d" % (t),
+                                                     "%04d.mat" %  (k * self.nWin + l))
                             dataset['x'].append(torch.from_numpy(io.loadmat(temp_path)['segment']).float().to(device))
-                            dataset['sub'].append(i)
-                            dataset['y'].append(j)
-                            dataset['ses'].append(k)
-                            dataset['win'].append(l)
+                            dataset['s'].append(s)
+                            dataset['t'].append(t)
+                            if k < 5:
+                                d = 1
+                            elif k >= 5 and k < 10:
+                                d = 2
+                            elif k >= 10 and k < 15:
+                                d = 3
+                            elif k >= 15 and k < 20:
+                                d = 4
+                            elif k>= 20:
+                                d = 5
+                            dataset['d'].append(k)
 
             torch.save(dataset, EMG_tensor_path)
         self.x = dataset['x']
-        self.y = dataset['y']
-        self.ses = dataset['ses']
-        self.win = dataset['win']
-        self.sub = dataset['sub']
+        self.t = dataset['t']
+        self.s = dataset['s']
+        self.d = dataset['d']
 
     def __getitem__(self, idx):
         x = self.x[idx]

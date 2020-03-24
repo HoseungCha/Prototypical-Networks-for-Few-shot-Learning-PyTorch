@@ -19,7 +19,7 @@ class EMG_FE_Classify_Sampler(object):
     iSesTrain = range(0, 5)
     nWin = 41
 
-    def __init__(self, option, labels, ses, win, sub):
+    def __init__(self, option, index= None):
         '''
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -30,35 +30,39 @@ class EMG_FE_Classify_Sampler(object):
         - iterations: number of iterations (episodes) per epoch
         '''
         super(EMG_FE_Classify_Sampler, self).__init__()
-        self.labels = torch.LongTensor(labels)
-        self.classes, self.counts = np.unique(self.labels, return_counts=True)
-        self.classes = torch.LongTensor(self.classes)
-        self.ses = torch.LongTensor(ses)
-        self.win = torch.LongTensor(win)
-        self.sub = torch.LongTensor(sub)
-        test_subject_index = option.test_subject_index
+        # index[0] = dataset.t
+        # index[1] = dataset.s
+        # index[2] = dataset.d
 
-        # core.ismember(range(0, self.nSub), [iSubTrain, option.test_subject_index]), None)
-        val_subject_index = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [test_subject_index])
+        # Todo: Possible query and support indexes
+        query = []
+        support = []
 
-        self.sub.eq(test_subject_index).nonzero()
+        # Todo: Confirm test subject
+        index_test_subject = option.test_subject_index
+        # Todo: Get the validation subjects (cross-validation -> one batch)
+        # index_val_subject = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject])
+        # Todo: prepare leave-subject-out cross-validation Loop
+        for sVal in core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject]):
+            for s in core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject, sVal]):
+                for t in range(0, self.nFE):
+                    for dSupport in range(0, 5):
+                        for d in core.getIdxExclude_of_inputIndex(range(0,5), [dSupport]):
+                            a1 = core.ismember(index['s'], [s])
+                            a2 = core.ismember(index['t'], [t])
+                            a3 = core.ismember(index['d'], [d])
+                            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
+                            found = core.find(a,None)
+                            query.append(torch.randperm(found.__len__())[:50])
 
-        query_idxs = torch.stack(list(map(lambda c: self.ses.eq(c).nonzero(), torch.arange(0,5)))).view(-1)
-        query_idxs = core.find_multiple_index(self.ses.eq, torch.arange(0,5))
+                    a1 = core.ismember(index['s'], [s])
+                    a2 = core.ismember(index['t'], [t])
+                    a3 = core.ismember(index['d'], [dSupport])
+                    a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
+                    found = core.find(a, None)
+                    support.append(torch.randperm(found.__len__())[:200])
 
-        core.find(torch.arange(0,5), 5)
-        self.ses.eq([1,2,3,4,5]).nonzero()
-
-
-        for i in range(self.nSub):
-            for j in range(self.nFE):
-                for k in range(self.nSes):
-                    for l in range(self.nWin):
-                        index = i * (self.nFE * self.nSes * self.nWin) +\
-                                j * (self.nSes * self.nWin)\
-                                + k * (self.nWin) + l
-                        print(index)
-
+        a = 1;
 
     def __iter__(self):
         '''
