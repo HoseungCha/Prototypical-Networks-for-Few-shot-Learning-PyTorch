@@ -35,3 +35,12 @@ def getIdx_intersection(t1,t2): #https://stackoverflow.com/questions/55110047/fi
     # print(t1[(compareview != t1).T.prod(1) == 1])
     return t1[(compareview == t1).T.sum(1) == 1], t1[(compareview != t1).T.prod(1) == 1]
 
+# def
+#     im_paths = []
+#     with torch.no_grad():
+#         for i, (inputs, classes, im_path) in enumerate(dataloaders['test']):
+#             ###im_paths = torch.cat((im_paths, im_path), )
+#             im_paths.append(im_path)
+#
+#     flattened_im_paths = flattened = [item for sublist in im_paths for item in sublist]
+

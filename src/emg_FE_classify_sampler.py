@@ -13,13 +13,8 @@ class EMG_FE_Classify_Sampler(object):
 
     __len__ returns the number of episodes per epoch (same as 'self.iterations').
     '''
-    nSub = 10
-    nFE = 11
-    nSes = 25
-    iSesTrain = range(0, 5)
-    nWin = 41
 
-    def __init__(self, option, labels, ses, win, sub):
+    def __init__(self, option, dataset = None):
         '''
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -30,7 +25,13 @@ class EMG_FE_Classify_Sampler(object):
         - iterations: number of iterations (episodes) per epoch
         '''
         super(EMG_FE_Classify_Sampler, self).__init__()
-        self.labels = torch.LongTensor(labels)
+
+        index_sub_test = 9
+
+        dataset.dataset
+
+
+        self.labels = torch.tensor(labels)
         self.classes, self.counts = np.unique(self.labels, return_counts=True)
         self.classes = torch.LongTensor(self.classes)
         self.ses = torch.LongTensor(ses)

@@ -9,6 +9,7 @@ from EMG_FE_dataset import EMG_dataset
 from protonet import ProtoNet
 from parser_util import get_parser
 
+import torch
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
@@ -38,7 +39,7 @@ def init_dataset(opt, mode):
     else:
         dataset = EMG_dataset(mode=mode, option=opt)
 
-    n_classes = len(np.unique(dataset.y))
+    n_classes = torch.unique(dataset.dataset['tr']['t']).shape[0]
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
         raise(Exception('There are not enough classes in the dataset in order ' +
                         'to satisfy the chosen classes_per_it. Decrease the ' +
@@ -58,8 +59,7 @@ def init_sampler(opt, dataset, mode):
         returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
                                  iterations=opt.iterations)
     else:
-        returnSampler = EMG_FE_Classify_Sampler(option=opt, labels=dataset.y,
-                                                ses=dataset.ses, win=dataset.win, sub =dataset.sub)
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, dataset=dataset)
 
     return returnSampler
 
@@ -103,15 +103,15 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
+def train(opt, tr_dataloader, model, optim, lr_scheduler, ):
     '''
     Train the model with the prototypical learning algorithm
     '''
 
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
-    if val_dataloader is None:
-        best_state = None
+    # if val_dataloader is None:
+    #     best_state = None
     train_loss = []
     train_acc = []
     val_loss = []
@@ -126,6 +126,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
         tr_iter = iter(tr_dataloader)
         model.train()
         for batch in tqdm(tr_iter):
+            # x에서 바 뽑고, y에서 앞부분 train 뒷부분 validation 으로 설정
             optim.zero_grad()
             x, y = batch
             x, y = x.to(device), y.to(device)
@@ -226,17 +227,16 @@ def main():
 
     init_seed(options)
 
-    tr_dataloader = init_dataloader(options, 'train')
-    val_dataloader = init_dataloader(options, 'val')
+    dataloader = init_dataloader(options, 'train')
+    # val_dataloader = init_dataloader(options, 'val')
     # trainval_dataloader = init_dataloader(options, 'trainval')
-    test_dataloader = init_dataloader(options, 'test')
+    # test_dataloader = init_dataloader(options, 'test')
 
     model = init_protonet(options)
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
                 tr_dataloader=tr_dataloader,
-                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)

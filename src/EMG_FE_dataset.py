@@ -10,6 +10,8 @@ import os
 import scipy.io as io
 from tqdm import tqdm
 import time
+from utils import core
+
 '''
 Inspired by https://github.com/pytorch/vision/pull/46
 '''
@@ -19,13 +21,15 @@ IMG_CACHE = {}
 
 class EMG_dataset(data.Dataset):
 
-    raw_folder = 'raw'
-    processed_folder = 'data'
+    # raw_folder = 'raw'
+    # processed_folder = 'data'
     nSub = 10
     nFE = 11
     nSes = 25
     nWin = 41
-
+    nFeat = 36
+    nSesTest = 20
+    nD = 5
 
 
     def __init__(self, mode='train', root='..' + os.sep + 'dataset_EMG',
@@ -42,42 +46,55 @@ class EMG_dataset(data.Dataset):
         self.root = root
         self.transform = transform
         self.target_transform = target_transform
+        nTn = 1
         dataset = {}
-        dataset['x'] = []
-        dataset['y'] = []
-        dataset['sub'] = []
-        dataset['ses'] = []
-        dataset['win'] = []
+        dataset['tr'] = {}
+        dataset['tt'] = {}
+
+        dataset['tr']['x'] = torch.empty(self.nSub, nTn * self.nWin * self.nFE, self.nFeat)
+        dataset['tr']['t'] = torch.empty(self.nSub, self.nWin * self.nFE, 1)
+        dataset['tr']['s'] = torch.empty(self.nSub, self.nWin * self.nFE, 1)
+        dataset['tr']['d'] = torch.empty(self.nSub, self.nWin * self.nFE, 1)
+
+        dataset['tt']['x'] = torch.empty(self.nSub, self.nSesTest * self.nWin * self.nFE, self.nFeat)
+        dataset['tt']['t'] = torch.empty(self.nSub, self.nSesTest * self.nWin * self.nFE, 1)
+        dataset['tt']['s'] = torch.empty(self.nSub, self.nSesTest * self.nWin * self.nFE, 1)
+        dataset['tt']['d'] = torch.empty(self.nSub, self.nSesTest * self.nWin * self.nFE, 1)
 
         device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
 
-        EMG_tensor_path = os.path.join(root,'data','EMG_tensor.pth')
-        if os.path.isfile(EMG_tensor_path) and not os.path.getsize(EMG_tensor_path)/(1024*1024) < 279: # datasetan mb
+
+
+        EMG_tensor_path = os.path.join(root,'EMG_tensor_%d.pth' % nTn)
+        if os.path.isfile(EMG_tensor_path) and not os.path.getsize(EMG_tensor_path)/(1024*1024) < 14: # datasetan mb
             start_time = time.time()
             dataset = torch.load(EMG_tensor_path)
             print("Loading dataset Time... %.2fs" % (time.time()-start_time))
         else:
             for i in tqdm(range(self.nSub)):
-                for j in range(self.nFE):
-                    for k in range(self.nSes):
-                        for l in range(self.nWin):
-                            index = k * self.nWin + l
-                            temp_path = os.path.join(root, 'data',
-                                                     "Sub-%02d" % (i),
-                                                     "FE-%02d" % (j),
-                                                     "%04d.mat" % index)
-                            dataset['x'].append(torch.from_numpy(io.loadmat(temp_path)['segment']).float().to(device))
-                            dataset['sub'].append(i)
-                            dataset['y'].append(j)
-                            dataset['ses'].append(k)
-                            dataset['win'].append(l)
+                temp_path = os.path.join(root, "feat_sub_%d_nt_%d" % (i, nTn-1))
+                temp_path = temp_path + '.mat'
+                loaded = io.loadmat(temp_path)
+                # train data episode (query set here)
+                dataset['tr']['x'][i][:][:] = (torch.from_numpy(loaded['tn'][0][0][0]).float().to(device))
+                dataset['tr']['t'][i][:][:] = (torch.from_numpy(loaded['tn'][0][0][1]).float().to(device))
+                dataset['tr']['s'][i][:][:] = torch.ones((self.nFE * self.nWin),1) * i
+                dataset['tr']['d'][i][:][:] = torch.ones((self.nFE * self.nWin),1) * 0
+
+                # train data episode (query set here)
+                dataset['tt']['x'][i][:][:] = (torch.from_numpy(loaded['tt'][0][0][0]).float().to(device))
+                dataset['tt']['t'][i][:][:] = (torch.from_numpy(loaded['tt'][0][0][1]).float().to(device))
+                dataset['tt']['s'][i][:][:] =torch.ones((self.nSesTest *self.nFE * self.nWin),1) * i
+
+                temp_dataset = torch.empty(self.nFE * self.nWin * self.nSesTest, 1)
+                for kk in range(1, self.nD):
+                    temp_dataset[(kk-1)* self.nD * self.nFE * self.nWin : (kk) * self.nD *self.nFE * self.nWin, :] \
+                        = torch.ones(self.nD * self.nFE * self.nWin ,1) * kk
+                dataset['tt']['d'][i][:][:] = temp_dataset
 
             torch.save(dataset, EMG_tensor_path)
-        self.x = dataset['x']
-        self.y = dataset['y']
-        self.ses = dataset['ses']
-        self.win = dataset['win']
-        self.sub = dataset['sub']
+
+        self.dataset = dataset
 
     def __getitem__(self, idx):
         x = self.x[idx]
