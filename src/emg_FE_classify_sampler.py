@@ -43,26 +43,29 @@ class EMG_FE_Classify_Sampler(object):
         # Todo: Get the validation subjects (cross-validation -> one batch)
         # index_val_subject = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject])
         # Todo: prepare leave-subject-out cross-validation Loop
-        for sVal in core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject]):
-            for s in core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject, sVal]):
-                for t in range(0, self.nFE):
-                    for dSupport in range(0, 5):
-                        for d in core.getIdxExclude_of_inputIndex(range(0,5), [dSupport]):
-                            a1 = core.ismember(index['s'], [s])
-                            a2 = core.ismember(index['t'], [t])
-                            a3 = core.ismember(index['d'], [d])
-                            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
-                            found = core.find(a,None)
-                            query.append(torch.randperm(found.__len__())[:50])
+        sVal_list =  core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject])
+        sVal = np.random.permutation(sVal_list)[0]
+        s = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject, sVal])
+        s = np.random.permutation(s)[0]
+        dSupport = np.random.permutation(list(range(5)))[0]
+        d = core.getIdxExclude_of_inputIndex(range(0, 5), [dSupport])
+        d = np.random.permutation(d)[0]
 
-                    a1 = core.ismember(index['s'], [s])
-                    a2 = core.ismember(index['t'], [t])
-                    a3 = core.ismember(index['d'], [dSupport])
-                    a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
-                    found = core.find(a, None)
-                    support.append(torch.randperm(found.__len__())[:200])
+        for t in range(0, self.nFE):
+            a1 = core.ismember(index['s'], [s])
+            a2 = core.ismember(index['t'], [t])
+            a3 = core.ismember(index['d'], [d])
+            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
+            found = core.find(a,None)
+            query.append(found[torch.randperm(found.__len__())[:50]])
 
-        a = 1;
+            a1 = core.ismember(index['s'], [s])
+            a2 = core.ismember(index['t'], [t])
+            a3 = core.ismember(index['d'], [dSupport])
+            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
+            found = core.find(a, None)
+            support.append(found[torch.randperm(found.__len__())[:50]])
+
 
     def __iter__(self):
         '''
