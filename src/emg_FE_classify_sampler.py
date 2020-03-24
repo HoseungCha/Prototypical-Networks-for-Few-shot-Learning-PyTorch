@@ -19,6 +19,7 @@ class EMG_FE_Classify_Sampler(object):
     iSesTrain = range(0, 5)
     nWin = 41
 
+
     def __init__(self, option, index= None):
         '''
         Initialize the PrototypicalBatchSampler object
@@ -30,41 +31,13 @@ class EMG_FE_Classify_Sampler(object):
         - iterations: number of iterations (episodes) per epoch
         '''
         super(EMG_FE_Classify_Sampler, self).__init__()
-        # index[0] = dataset.t
-        # index[1] = dataset.s
-        # index[2] = dataset.d
-
         # Todo: Possible query and support indexes
-        query = []
-        support = []
-
         # Todo: Confirm test subject
-        index_test_subject = option.test_subject_index
-        # Todo: Get the validation subjects (cross-validation -> one batch)
-        # index_val_subject = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject])
-        # Todo: prepare leave-subject-out cross-validation Loop
-        sVal_list =  core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject])
-        sVal = np.random.permutation(sVal_list)[0]
-        s = core.getIdxExclude_of_inputIndex(range(0,self.nSub), [index_test_subject, sVal])
-        s = np.random.permutation(s)[0]
-        dSupport = np.random.permutation(list(range(5)))[0]
-        d = core.getIdxExclude_of_inputIndex(range(0, 5), [dSupport])
-        d = np.random.permutation(d)[0]
-
-        for t in range(0, self.nFE):
-            a1 = core.ismember(index['s'], [s])
-            a2 = core.ismember(index['t'], [t])
-            a3 = core.ismember(index['d'], [d])
-            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
-            found = core.find(a,None)
-            query.append(found[torch.randperm(found.__len__())[:50]])
-
-            a1 = core.ismember(index['s'], [s])
-            a2 = core.ismember(index['t'], [t])
-            a3 = core.ismember(index['d'], [dSupport])
-            a = [a1[k] and a2[k] and a3[k] for k in range(1, a1.__len__())]
-            found = core.find(a, None)
-            support.append(found[torch.randperm(found.__len__())[:50]])
+        self.index = index
+        self.index_test_subject = option.test_subject_index
+        self.sample_per_class = option.num_support_tr
+        self.iterations = option.iterations
+        self.nDomain = 5
 
 
     def __iter__(self):
@@ -72,20 +45,87 @@ class EMG_FE_Classify_Sampler(object):
         yield a batch of indexes
         '''
         spc = self.sample_per_class
-        cpi = self.classes_per_it
+        index = self.index
+        iterations = self.iterations
+        # cpi = self.classes_per_it
 
-        for it in range(self.iterations):
-            batch_size = spc * cpi
-            batch = torch.LongTensor(batch_size)
-            c_idxs = torch.randperm(len(self.classes))[:cpi]
-            for i, c in enumerate(self.classes[c_idxs]):
-                s = slice(i * spc, (i + 1) * spc)
-                # FIXME when torch.argwhere will exists
-                # label_idx = torch.arange(len(self.classes)).long()[self.classes == c].item()
-                label_idx = int(c)
-                sample_idxs = torch.randperm(self.numel_per_class[label_idx])[:spc]
-                batch[s] = self.indexes[label_idx][sample_idxs]
-            batch = batch[torch.randperm(len(batch))]
+
+
+        # Todo: 다른 피험자로부터 train test 나눔
+        sVal = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])
+        sVal = np.random.permutation(sVal)[0]
+        sTrain = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject, sVal])
+        sTrain = np.random.permutation(sTrain)[0]
+
+
+
+        for it in range(iterations):
+            # batch 초기화
+            batch = torch.LongTensor(spc*self.nFE*2*2)
+
+            # Todo: domain 랜덤으로 두개 선택 하기나누기
+            temp = np.random.permutation(list(range(self.nDomain)))
+            dSupport = temp[0]
+            dQuery = temp[1]
+
+            # Todo: training data
+            query = []
+            support = []
+            for t in np.random.permutation(range(self.nFE)):
+                a1 = core.ismember(index['s'], [sTrain])
+                a2 = core.ismember(index['t'], [t])
+                a3 = core.ismember(index['d'], [dQuery])
+                a = [a1[k] and a2[k] and a3[k] for k in range(a1.__len__())]
+                found = core.find(a, None)
+                query.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
+
+                a1 = core.ismember(index['s'], [sTrain])
+                a2 = core.ismember(index['t'], [t])
+                a3 = core.ismember(index['d'], [dSupport])
+                a = [a1[k] and a2[k] and a3[k] for k in range(a1.__len__())]
+                found = core.find(a, None)
+                support.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
+
+            # batch에 저장
+            for t, c in enumerate(list(range(self.nFE))):
+                s = slice(c * spc, (c + 1) * spc)
+                batch[s] = query[t]
+
+            for t, c in enumerate(list(range(self.nFE, self.nFE*2))):
+                s = slice(c * spc, (c + 1) * spc)
+                batch[s] = support[t]
+
+
+            # Todo: validation data
+            temp = np.random.permutation(list(range(self.nDomain)))
+            dSupport = temp[0]
+            dQuery = temp[1]
+            query = []
+            support = []
+            for t in np.random.permutation(range(self.nFE)):
+                a1 = core.ismember(index['s'], [sVal])
+                a2 = core.ismember(index['t'], [t])
+                a3 = core.ismember(index['d'], [dQuery])
+                a = [a1[k] and a2[k] and a3[k] for k in range(a1.__len__())]
+                found = core.find(a, None)
+                query.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
+
+                a1 = core.ismember(index['s'], [sVal])
+                a2 = core.ismember(index['t'], [t])
+                a3 = core.ismember(index['d'], [dSupport])
+                a = [a1[k] and a2[k] and a3[k] for k in range(a1.__len__())]
+                found = core.find(a, None)
+                support.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
+
+            # batch에 저장
+            for t, c in enumerate(list(range(2*self.nFE, 3 * self.nFE))):
+                s = slice(c * spc, (c + 1) * spc)
+                batch[s] = query[t]
+
+            for t, c in enumerate(list(range(3* self.nFE, 4* self.nFE))):
+                s = slice(c * spc, (c + 1) * spc)
+                batch[s] = support[t]
+
             yield batch
 
     def __len__(self):
