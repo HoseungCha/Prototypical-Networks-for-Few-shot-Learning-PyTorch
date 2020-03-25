@@ -8,7 +8,9 @@ import os
 import pyriemann
 
 from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
-from prototypical_loss import prototypical_loss as loss_fn
+# from prototypical_loss import prototypical_loss as loss_fn
+from fenet_loss import fe_loss as loss_fn
+
 from EMG_FE_dataset import EMG_dataset
 from protonet import ProtoNet
 from fenet import FeNet
@@ -135,6 +137,8 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
         for batch in tqdm(tr_iter):
             optim.zero_grad()
             batch_x, batch_y = batch
+
+            # Todo: Prepare Training Dataset
             x_train = batch_x[0:int(batch_x.shape[0]/2)]
             y_train = batch_y[0:int(batch_x.shape[0]/2)]
 
@@ -142,22 +146,33 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
             cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
             Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
             x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
-
-
+            # Todo: Forward and Caculate Loss
             x, y = x_feat_train.to(device), y_train.to(device)
-            model_output = model(x)
+            model_output = model(torch.unsqueeze(x,1))
             loss, acc = loss_fn(model_output, target=y,
                                 n_support=opt.num_support_tr)
+            # Todo: Prepare gradients, Update Parameters, and Evaluation
             loss.backward()
             optim.step()
+
+            # Todo: Save results
             train_loss.append(loss.item())
             train_acc.append(acc.item())
 
+            # Todo: Prepare Training Dataset
             x_test = batch_x[int(batch_x.shape[0]/2):]
             y_test = batch_y[int(batch_y.shape[0]/2):]
-            model_output = model(x)
+
+            # Todo: Riemannian Feature Extraction
+            cov = covariance.covariances(np.swapaxes(x_test.cpu().numpy(), 1, 2), estimator='cov')
+            x_feat_test = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+
+            # Todo: Forward and Evaluation Test data
+            x, y = x_feat_test.to(device), y_test.to(device)
+            model_output = model(torch.unsqueeze(x,1))
             loss, acc = loss_fn(model_output, target=y,
                                 n_support=opt.num_support_val)
+            # Todo: Save results
             val_loss.append(loss.item())
             val_acc.append(acc.item())
 
@@ -244,6 +259,7 @@ def main():
     init_seed(options)
 
     tr_dataloader = init_dataloader(options, 'train')
+    tr_dataloader = init_dataloader(options, 'test')
     # val_dataloader = init_dataloader(options, 'val')
     # trainval_dataloader = init_dataloader(options, 'trainval')
     # test_dataloader = init_dataloader(options, 'test')

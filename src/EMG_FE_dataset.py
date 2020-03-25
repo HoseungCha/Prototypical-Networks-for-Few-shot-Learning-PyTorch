@@ -47,7 +47,6 @@ class EMG_dataset(data.Dataset):
         dataset['t'] = []
         dataset['s'] = []
         dataset['d'] = []
-        # dataset['win'] = []
 
         device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
 
