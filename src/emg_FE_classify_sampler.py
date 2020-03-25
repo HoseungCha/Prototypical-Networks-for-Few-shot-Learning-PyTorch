@@ -1,7 +1,6 @@
 # coding=utf-8
 import numpy as np
 import torch
-import matplotlib
 from utils import core
 
 class EMG_FE_Classify_Sampler(object):

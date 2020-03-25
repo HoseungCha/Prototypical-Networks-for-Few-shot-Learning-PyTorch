@@ -1,26 +1,26 @@
 # coding=utf-8
-from prototypical_batch_sampler import PrototypicalBatchSampler
-from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
-
-from prototypical_loss import prototypical_loss as loss_fn
-from omniglot_dataset import OmniglotDataset
-from EMG_FE_dataset import EMG_dataset
-
-from protonet import ProtoNet
-from parser_util import get_parser
-
 import matplotlib
 matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
-
-from utils import core
-from tqdm import tqdm
 import numpy as np
 import torch
 import os
-
 import pyriemann
-# from util_plot import util_plot
+
+from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
+from prototypical_loss import prototypical_loss as loss_fn
+from EMG_FE_dataset import EMG_dataset
+from protonet import ProtoNet
+from fenet import FeNet
+from parser_util import get_parser
+from utils import core
+from pyriemann.utils import mean
+from pyriemann.utils import covariance
+from pyriemann.utils import tangentspace
+from tqdm import tqdm
+
+
+
 
 def init_seed(opt):
     '''
@@ -79,7 +79,11 @@ def init_protonet(opt):
     Initialize the ProtoNet
     '''
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
-    model = ProtoNet().to(device)
+    if opt.dataset_type == 'EMG_dataset':
+        model = FeNet().to(device)
+    else:
+        model = ProtoNet().to(device)
+
     return model
 
 
@@ -130,8 +134,17 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
         model.train()
         for batch in tqdm(tr_iter):
             optim.zero_grad()
-            x, y = batch
-            x, y = x.to(device), y.to(device)
+            batch_x, batch_y = batch
+            x_train = batch_x[0:int(batch_x.shape[0]/2)]
+            y_train = batch_y[0:int(batch_x.shape[0]/2)]
+
+            # Todo: Riemannian Feature Extraction
+            cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
+            Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
+            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+
+
+            x, y = x_feat_train.to(device), y_train.to(device)
             model_output = model(x)
             loss, acc = loss_fn(model_output, target=y,
                                 n_support=opt.num_support_tr)
@@ -139,28 +152,29 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
             optim.step()
             train_loss.append(loss.item())
             train_acc.append(acc.item())
-        avg_loss = np.mean(train_loss[-opt.iterations:])
-        avg_acc = np.mean(train_acc[-opt.iterations:])
-        print('Avg Train Loss: {}, Avg Train Acc: {}'.format(avg_loss, avg_acc))
-        lr_scheduler.step()
-        if val_dataloader is None:
-            continue
-        val_iter = iter(val_dataloader)
-        model.eval()
-        for batch in val_iter:
-            x, y = batch
-            x, y = x.to(device), y.to(device)
+
+            x_test = batch_x[int(batch_x.shape[0]/2):]
+            y_test = batch_y[int(batch_y.shape[0]/2):]
             model_output = model(x)
             loss, acc = loss_fn(model_output, target=y,
                                 n_support=opt.num_support_val)
             val_loss.append(loss.item())
             val_acc.append(acc.item())
+
+        # Compute loss and acc of training data
+        avg_loss = np.mean(train_loss[-opt.iterations:])
+        avg_acc = np.mean(train_acc[-opt.iterations:])
+        print('Avg Train Loss: {}, Avg Train Acc: {}'.format(avg_loss, avg_acc))
+        lr_scheduler.step()
+
+        # Compute loss and acc of validation data
         avg_loss = np.mean(val_loss[-opt.iterations:])
         avg_acc = np.mean(val_acc[-opt.iterations:])
         postfix = ' (Best)' if avg_acc >= best_acc else ' (Best: {})'.format(
             best_acc)
         print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
             avg_loss, avg_acc, postfix))
+
         if avg_acc >= best_acc:
             torch.save(model.state_dict(), best_model_path)
             best_acc = avg_acc

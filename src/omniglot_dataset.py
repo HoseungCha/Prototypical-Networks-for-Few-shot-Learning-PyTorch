@@ -70,7 +70,7 @@ class OmniglotDataset(data.Dataset):
         x = self.x[idx]
         if self.transform:
             x = self.transform(x)
-        return x, self.y[idx]
+        return x, self.t[idx]
 
     def __len__(self):
         return len(self.all_items)
