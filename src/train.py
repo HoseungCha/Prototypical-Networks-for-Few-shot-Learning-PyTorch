@@ -8,6 +8,10 @@ import os
 import pyriemann
 
 from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
+from batch_sampler_val import Batch_Sampler_Val
+from batch_sampler_train import Batch_Sampler_Train
+from batch_sampler_test import Batch_Sampler_Test
+
 # from prototypical_loss import prototypical_loss as loss_fn
 from fenet_loss import fe_loss as loss_fn
 
@@ -38,7 +42,7 @@ def init_dataset(opt, mode):
     if opt.dataset_type == 'omniglot':
         dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
     else:
-        dataset = EMG_dataset(mode=mode, option=opt)
+        dataset = EMG_dataset(option=opt)
 
     n_classes = len(np.unique(dataset.t))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
@@ -48,23 +52,17 @@ def init_dataset(opt, mode):
     return dataset
 
 
-def init_sampler(opt, dataset, mode):
-    if 'train' in mode:
-        classes_per_it = opt.classes_per_it_tr
-        num_samples = opt.num_support_tr + opt.num_query_tr
-    else:
-        classes_per_it = opt.classes_per_it_val
-        num_samples = opt.num_support_val + opt.num_query_val
-
-    if opt.dataset_type == 'omniglot':
-        returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
-                                 iterations=opt.iterations)
-    else:
-        index = {}
-        index['t'] = dataset.t
-        index['s'] = dataset.s
-        index['d'] = dataset.d
-        returnSampler = EMG_FE_Classify_Sampler(option=opt, index=index, mode=mode)
+def init_sampler(opt, dataset, mode, subject):
+    index = {}
+    index['t'] = dataset.t
+    index['s'] = dataset.s
+    index['d'] = dataset.d
+    if mode == 'val':
+        returnSampler = Batch_Sampler_Val(option=opt, index=index, valSubject=subject)
+    elif mode == 'train':
+        returnSampler = Batch_Sampler_Train(option=opt, index=index, trainSubject=subject)
+    elif mode == 'test':
+        returnSampler = Batch_Sampler_Val(option=opt, index=index, testSubject=subject)
 
     return returnSampler
 
@@ -127,8 +125,83 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, t
     val_acc = []
     best_acc = 0
     nFE = 11
+    nSub = 10
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
+
+    for sTest in range(nSub):
+        # best models will be searched using bess validation accuracy
+        val_loss = []
+        val_acc = []
+        for sVal in core.getIdxExclude_of_inputIndex(range(0, nSub),[sTest]):
+            # load validation dataloader
+            dataset = EMG_dataset(option=opt)
+            sampler = init_sampler(opt, dataset, 'val')
+            dataloader_val = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
+            val_iter = iter(dataloader_val)
+            for sTrain in core.getIdxExclude_of_inputIndex(range(0, nSub),[sTest, sVal]):
+                # train with  dataset including sTrains (8 subjects)
+                dataset = EMG_dataset(option=opt)
+                sampler = init_sampler(opt, dataset, 'train')
+                dataloader_train = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
+                tr_iter = iter(dataloader_train)
+                #========================train==========================================$
+                for batch in tqdm(tr_iter):
+                    x, y = batch
+                    # Compute Covariance
+                    x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
+                    # Compute Reference Cov Mean
+                    Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
+                    # Tangent Mapping
+                    x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
+
+                    # Todo: Forward and Caculate Loss
+                    x, y = x_feat_train.to(device), y.to(device)
+                    model_output = model(torch.unsqueeze(x, 1))
+                    loss, acc = loss_fn(model_output, target=y,
+                                        n_support=opt.num_support_tr)
+
+                    # Todo: Prepare gradients, Update Parameters, and Evaluation
+                    loss.backward()
+                    optim.step()
+
+                    # Todo: Save results
+                    train_loss.append(loss.item())
+                    train_acc.append(acc.item())
+
+                    print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
+
+                    # validation 평가
+                    for batch_val in val_iter:
+                        model.eval()
+                        x, y = batch_val
+                        # Compute Covariance
+                        x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
+                        # Compute Reference Cov Mean
+                        Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
+                        # Tangent Mapping
+                        x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
+
+                        # Todo: Forward and Caculate Loss
+                        x, y = x_feat_train.to(device), y.to(device)
+                        model_output = model(torch.unsqueeze(x, 1))
+                        loss, acc = loss_fn(model_output, target=y, n_support=opt.num_support_val)
+                        val_loss.append(loss.item())
+                        val_acc.append(acc.item())
+
+
+
+
+    # using the best model, evaluate the test subject
+    # dataset = EMG_dataset(option=opt)
+    sampler = init_sampler(opt, dataset, 'val')
+    dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
+
+
+
+
+
+
 
     for i, epoch in enumerate(range(opt.epochs)):
         print('=== Epoch: {} ==='.format(epoch))
@@ -139,48 +212,11 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, t
         for i in tqdm(range(360)):
             batch = next(tr_iter)
             optim.zero_grad()
-            x, y = batch
-            # Compute Covariance
-            x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(),1,2),estimator='cov')
-            # Compute Reference Cov Mean
-            Cref = mean.mean_riemann(x_cov[:opt.num_support_tr*nFE]) # query index 만큼만 들어감
-            # Tangent Mapping
-            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
 
-            # Todo: Forward and Caculate Loss
-            x, y = x_feat_train.to(device), y.to(device)
-            model_output = model(torch.unsqueeze(x,1))
-            loss, acc = loss_fn(model_output, target=y,
-                                n_support=opt.num_support_tr)
-
-            # Todo: Prepare gradients, Update Parameters, and Evaluation
-            loss.backward()
-            optim.step()
-
-            # Todo: Save results
-            train_loss.append(loss.item())
-            train_acc.append(acc.item())
-
-            print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
             #============================================VALIDAION=====================================
             for j in range(5):
-                model.eval()
-                batch = next(val_iter)
-                x, y = batch
-                # Compute Covariance
-                x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
-                # Compute Reference Cov Mean
-                Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
-                # Tangent Mapping
-                x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
 
-                # Todo: Forward and Caculate Loss
-                x, y = x_feat_train.to(device), y.to(device)
-                model_output = model(torch.unsqueeze(x,1))
-                loss, acc = loss_fn(model_output, target=y, n_support=opt.num_support_val)
-                val_loss.append(loss.item())
-                val_acc.append(acc.item())
                 # print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
                 if j== 4:
@@ -265,9 +301,9 @@ def main():
 
     init_seed(options)
 
-    tr_dataloader = init_dataloader(options, 'train')
-    test_dataloader = init_dataloader(options, 'test')
-    val_dataloader = init_dataloader(options, 'val')
+    # tr_dataloader = init_dataloader(options, 'train')
+    # test_dataloader = init_dataloader(options, 'test')
+    # val_dataloader = init_dataloader(options, 'val')
     # trainval_dataloader = init_dataloader(options, 'trainval')
     # test_dataloader = init_dataloader(options, 'test')
 
@@ -275,12 +311,14 @@ def main():
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
-                tr_dataloader=tr_dataloader,
-                val_dataloader=val_dataloader,
-                test_dataloader=test_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
+
+    # tr_dataloader = tr_dataloader,
+    # val_dataloader = val_dataloader,
+    # test_dataloader = test_dataloader,
+    #
     #
     # res = train(opt=options,
     #             tr_dataloader=tr_dataloader,

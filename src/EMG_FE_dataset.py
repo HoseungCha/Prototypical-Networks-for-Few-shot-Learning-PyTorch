@@ -28,7 +28,7 @@ class EMG_dataset(data.Dataset):
 
 
 
-    def __init__(self, mode='train', root='..' + os.sep + 'dataset_EMG',
+    def __init__(self, root='..' + os.sep + 'dataset_EMG',
                  transform=None, target_transform=None, download=True, option=None):
         '''
         The items are (filename,category). The index of all the categories can be found in self.idx_classes
