@@ -210,6 +210,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
 
 
     for i, epoch in enumerate(range(opt.epochs)):
+
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
         model.train()
