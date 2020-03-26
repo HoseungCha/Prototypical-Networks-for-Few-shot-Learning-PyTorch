@@ -211,6 +211,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
 
     for i, epoch in enumerate(range(opt.epochs)):
 
+
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
         model.train()
@@ -221,6 +222,7 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
             # Todo: Prepare Training Dataset
             x_train = batch_x[0:int(batch_x.shape[0]/2)]
             y_train = batch_y[0:int(batch_x.shape[0]/2)]
+
 
             # Todo: Riemannian Feature Extraction
             cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
