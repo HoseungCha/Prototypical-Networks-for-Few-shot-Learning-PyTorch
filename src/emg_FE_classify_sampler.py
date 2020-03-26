@@ -39,7 +39,6 @@ class EMG_FE_Classify_Sampler(object):
         self.nDomain = 5
 
 
-
     def __iter__(self):
         '''
         yield a batch of indexes
@@ -47,7 +46,6 @@ class EMG_FE_Classify_Sampler(object):
         spc = self.sample_per_class
         index = self.index
         iterations = self.iterations
-
 
         # Todo: 다른 피험자로부터 train test 나눔
         # sVal = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])
@@ -106,7 +104,6 @@ def get_idx_from_std(index, s, t, d):
     a2 = torch.IntTensor(index['t']).eq(t).nonzero()
     a3 = torch.IntTensor(index['d']).eq(d).nonzero()
     return torch.IntTensor(np.intersect1d(np.intersect1d(a1.numpy(), a2.numpy()), a3.numpy()))
-
 
 def get_idx_of_query(nFE,index, sTrain, dQuery,spc):
     query = []

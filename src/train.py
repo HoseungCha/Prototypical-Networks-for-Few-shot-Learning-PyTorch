@@ -223,7 +223,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
             x_train = batch_x[0:int(batch_x.shape[0]/2)]
             y_train = batch_y[0:int(batch_x.shape[0]/2)]
 
-
             # Todo: Riemannian Feature Extraction
             cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
             Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
