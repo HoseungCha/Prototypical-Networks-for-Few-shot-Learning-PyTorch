@@ -52,18 +52,24 @@ def init_dataset(opt, mode):
     return dataset
 
 
-def init_sampler(opt, dataset, mode, subject):
-    index = {}
-    index['t'] = dataset.t
-    index['s'] = dataset.s
-    index['d'] = dataset.d
-    if mode == 'val':
-        returnSampler = Batch_Sampler_Val(option=opt, index=index, valSubject=subject)
-    elif mode == 'train':
-        returnSampler = Batch_Sampler_Train(option=opt, index=index, trainSubject=subject)
-    elif mode == 'test':
-        returnSampler = Batch_Sampler_Val(option=opt, index=index, testSubject=subject)
 
+def init_sampler(opt, dataset, mode):
+    if 'train' in mode:
+        classes_per_it = opt.classes_per_it_tr
+        num_samples = opt.num_support_tr + opt.num_query_tr
+    else:
+        classes_per_it = opt.classes_per_it_val
+        num_samples = opt.num_support_val + opt.num_query_val
+
+    if opt.dataset_type == 'omniglot':
+        returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
+                                 iterations=opt.iterations)
+    else:
+        index = {}
+        index['t'] = dataset.t
+        index['s'] = dataset.s
+        index['d'] = dataset.d
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, index = index)
     return returnSampler
 
 
@@ -311,8 +317,9 @@ def main():
 
     init_seed(options)
 
-    # tr_dataloader = init_dataloader(options, 'train')
-    # test_dataloader = init_dataloader(options, 'test')
+
+    tr_dataloader = init_dataloader(options, 'train')
+    tr_dataloader = init_dataloader(options, 'test')
     # val_dataloader = init_dataloader(options, 'val')
     # trainval_dataloader = init_dataloader(options, 'trainval')
     # test_dataloader = init_dataloader(options, 'test')
@@ -322,7 +329,6 @@ def main():
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
                 tr_dataloader=tr_dataloader,
-                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
