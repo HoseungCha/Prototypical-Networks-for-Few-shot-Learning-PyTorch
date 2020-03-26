@@ -86,20 +86,9 @@ def get_parser():
                         help='select data type',
                         default='omniglot')
 
-    parser.add_argument('-trSub', '--training_subject_index',
-                        type=str,
-                        help='select data type',
-                        default=list(range(8)))
-
-    parser.add_argument('-valSub', '--validation_subject_index',
-                        type=str,
-                        help='select data type',
-                        default=8)
-
     parser.add_argument('-teSub', '--test_subject_index',
                         type=str,
                         help='select data type',
                         default=9)
-
 
     return parser
