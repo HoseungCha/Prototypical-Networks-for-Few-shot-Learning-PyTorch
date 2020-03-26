@@ -39,6 +39,7 @@ class EMG_FE_Classify_Sampler(object):
         self.nDomain = 5
 
 
+
     def __iter__(self):
         '''
         yield a batch of indexes
@@ -47,42 +48,51 @@ class EMG_FE_Classify_Sampler(object):
         index = self.index
         iterations = self.iterations
 
+
         # Todo: 다른 피험자로부터 train test 나눔
-        sVal = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])
-        sVal = np.random.permutation(sVal)[0]
-        sTrain = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject, sVal])
-        sTrain = np.random.permutation(sTrain)[0]
+        # sVal = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])
+        # sVal = np.random.permutation(sVal)[0]
+        # sTrain = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject, sVal])
+        # sTrain = np.random.permutation(sTrain)[0]
+        if self.mode == 'test':
+            dQuery = 0
+            support = []
+            for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
+                support.append(get_idx_of_support(self.nFE, index, self.index_test_subject, dQuery, spc))
+            query = get_idx_of_query(self.nFE, index, self.index_test_subject, dQuery)
 
-        for it in range(iterations):
-            # batch 초기화
-            batch = torch.LongTensor(spc*self.nFE*2*2)
+            # index 합치기
+            batch = []
+            batch.append(np.array(query).ravel().tolist())
+            batch.append(np.array(support).ravel().tolist())
+            yield np.array(batch).ravel().tolist()
+        else:
+            for sVal in tqdm(core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])):
+                # TODO: Trianin/ sVal에서 leave-one-subject-out cross vlalidation의 instacne 구함
+                if self.mode == 'train':
+                    for sTrain in (core.getIdxExclude_of_inputIndex(range(0, self.nSub),
+                                                                        [self.index_test_subject, sVal])):
+                        # Todo: training data
+                        # query = []
 
-            # Todo: domain 랜덤으로 두개 선택 하기나누기
-            temp = np.random.permutation(list(range(self.nDomain)))
-            dSupport = temp[0]
-            dQuery = temp[1]
+                        for dQuery in range(self.nDomain): # Todo: domain 랜덤으로 두개 선택 하기나누기
+                            # dQuery = 1
+                            query = get_idx_of_query(self.nFE, index, sTrain, dQuery, spc)
+                            support = []
+                            for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
+                                support.append(get_idx_of_support(self.nFE, index, sTrain, dSupport))
+                            # index 합치기
+                            yield (np.array(query).ravel().tolist() + np.array(support).ravel().tolist())
 
-            # Todo: training data
-            query, support = get_idx_of_query_and_support(self.nFE, index, sTrain, dQuery, dSupport, spc)
-
-            # batch에 저장
-            batch = add_data_into_batch(batch, self.nFE, range(self.nFE), spc, query)
-            batch = add_data_into_batch(batch, self.nFE, range(self.nFE, 2 * self.nFE), spc, support)
-
-            # Todo: validation data
-            temp = np.random.permutation(list(range(self.nDomain)))
-            dSupport = temp[0]
-            dQuery = temp[1]
-
-            query, support = get_idx_of_query_and_support(self.nFE, index, sVal, dQuery, dSupport, spc)
-
-            # batch에 저장
-            batch = add_data_into_batch(batch, self.nFE, range(2 * self.nFE, 3 * self.nFE), spc, query)
-            batch = add_data_into_batch(batch, self.nFE, range(3 * self.nFE, 4* self.nFE), spc, support)
-
-            # Todo: test data
-
-            yield batch
+                if self.mode =='val':
+                    for dQuery in range(self.nDomain):  # Todo: domain 랜덤으로 두개 선택 하기나누기
+                        # dQuery = 1
+                        query = get_idx_of_query(self.nFE, index, sVal, dQuery, spc)
+                        support = []
+                        for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
+                            support.append(get_idx_of_support(self.nFE, index, sVal, dSupport))
+                        # index 합치기
+                        yield (np.array(query).ravel().tolist() + np.array(support).ravel().tolist())
 
     def __len__(self):
         '''
@@ -97,13 +107,31 @@ def get_idx_from_std(index, s, t, d):
     a3 = torch.IntTensor(index['d']).eq(d).nonzero()
     return torch.IntTensor(np.intersect1d(np.intersect1d(a1.numpy(), a2.numpy()), a3.numpy()))
 
-def get_idx_of_query_and_support(nFE,index, sTrain, dQuery, dSupport, spc):
+
+def get_idx_of_query(nFE,index, sTrain, dQuery,spc):
     query = []
     support = []
     for t in range(nFE):
         found = get_idx_from_std(index, sTrain, t, dQuery)
+        query.append((found)[torch.randperm(found.__len__())[:spc]])
+
+    return query
+
+def get_idx_of_support(nFE,index, s, dSupport,):
+    support = []
+    for t in range(nFE):
+        found = get_idx_from_std(index, s, t, dSupport)
+        support.append((found)[torch.randperm(found.__len__())[:]])
+    return support
+
+
+def get_idx_of_query_and_support(nFE,index, s, dQuery, dSupport, spc):
+    query = []
+    support = []
+    for t in range(nFE):
+        found = get_idx_from_std(index, s, t, dQuery)
         query.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
-        found = get_idx_from_std(index, sTrain, t, dSupport)
+        found = get_idx_from_std(index, s, t, dSupport)
         support.append(torch.IntTensor(found)[torch.randperm(found.__len__())[:spc]])
     return query, support
 

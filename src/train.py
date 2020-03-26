@@ -210,35 +210,55 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
 
 
     for i, epoch in enumerate(range(opt.epochs)):
-
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
         model.train()
         for batch in tqdm(tr_iter):
             optim.zero_grad()
+            batch_x, batch_y = batch
 
-            #============================================VALIDAION=====================================
-            for j in range(5):
+            # Todo: Prepare Training Dataset
+            x_train = batch_x[0:int(batch_x.shape[0]/2)]
+            y_train = batch_y[0:int(batch_x.shape[0]/2)]
 
-                # print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
+            # Todo: Riemannian Feature Extraction
+            cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
+            Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
+            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+            # Todo: Forward and Caculate Loss
+            x, y = x_feat_train.to(device), y_train.to(device)
+            model_output = model(torch.unsqueeze(x,1))
+            loss, acc = loss_fn(model_output, target=y,
+                                n_support=opt.num_support_tr)
+            # Todo: Prepare gradients, Update Parameters, and Evaluation
+            loss.backward()
+            optim.step()
 
-                if j== 4:
-                    avg_loss = np.mean(val_loss[-5:])
-                    avg_acc = np.mean(val_acc[-5:])
-                    postfix = ' (Best)' if acc >= best_acc else ' (Best: {})'.format(
-                        best_acc)
-                    print('AVG Val Loss: {}, AVG Val Acc: {}{}'.format(
-                        avg_loss, avg_acc, postfix))
+            # Todo: Save results
+            train_loss.append(loss.item())
+            train_acc.append(acc.item())
 
-                    if avg_acc >= best_acc:
-                        torch.save(model.state_dict(), best_model_path)
-                        best_acc = avg_acc
-                        best_state = model.state_dict()
+            # Todo: Prepare Training Dataset
+            x_test = batch_x[int(batch_x.shape[0]/2):]
+            y_test = batch_y[int(batch_y.shape[0]/2):]
 
-            # ============================================VALIDAION END=====================================
+            # Todo: Riemannian Feature Extraction
+            cov = covariance.covariances(np.swapaxes(x_test.cpu().numpy(), 1, 2), estimator='cov')
+            x_feat_test = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
 
-        # update learning rate
+            # Todo: Forward and Evaluation Test data
+            x, y = x_feat_test.to(device), y_test.to(device)
+            model_output = model(torch.unsqueeze(x,1))
+            loss, acc = loss_fn(model_output, target=y,
+                                n_support=opt.num_support_val)
+            # Todo: Save results
+            val_loss.append(loss.item())
+            val_acc.append(acc.item())
 
+        # Compute loss and acc of training data
+        avg_loss = np.mean(train_loss[-opt.iterations:])
+        avg_acc = np.mean(train_acc[-opt.iterations:])
+        print('Avg Train Loss: {}, Avg Train Acc: {}'.format(avg_loss, avg_acc))
         lr_scheduler.step()
 
         # Compute loss and acc of validation data
@@ -329,6 +349,7 @@ def main():
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
                 tr_dataloader=tr_dataloader,
+                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
