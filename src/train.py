@@ -131,7 +131,6 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
     val_acc = []
     best_acc = 0
 
-
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
 
