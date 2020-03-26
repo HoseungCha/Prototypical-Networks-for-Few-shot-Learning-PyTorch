@@ -38,6 +38,8 @@ class EMG_FE_Classify_Sampler(object):
         self.iterations = option.iterations
         self.nDomain = 5
 
+        self.mode = mode
+
 
     def __iter__(self):
         '''
