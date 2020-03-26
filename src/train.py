@@ -110,7 +110,7 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, test_dataloader=None):
+def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
     '''
     Train the model with the prototypical learning algorithm
     '''
@@ -204,15 +204,12 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, t
 
 
     for i, epoch in enumerate(range(opt.epochs)):
+
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
-        val_iter = iter(val_dataloader)
-        test_iter = iter(test_dataloader)
         model.train()
-        for i in tqdm(range(360)):
-            batch = next(tr_iter)
+        for batch in tqdm(tr_iter):
             optim.zero_grad()
-
 
             #============================================VALIDAION=====================================
             for j in range(5):
@@ -235,15 +232,28 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, t
             # ============================================VALIDAION END=====================================
 
         # update learning rate
+
         lr_scheduler.step()
 
-    # 최종 모델 저장
+        # Compute loss and acc of validation data
+        avg_loss = np.mean(val_loss[-opt.iterations:])
+        avg_acc = np.mean(val_acc[-opt.iterations:])
+        postfix = ' (Best)' if avg_acc >= best_acc else ' (Best: {})'.format(
+            best_acc)
+        print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
+            avg_loss, avg_acc, postfix))
+
+        if avg_acc >= best_acc:
+            torch.save(model.state_dict(), best_model_path)
+            best_acc = avg_acc
+            best_state = model.state_dict()
+
     torch.save(model.state_dict(), last_model_path)
 
-    # 각종 정확도 저장
     for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
         save_list_to_file(os.path.join(opt.experiment_root,
                                        name + '.txt'), locals()[name])
+
     return best_state, best_acc, train_loss, train_acc, val_loss, val_acc
 
 
@@ -311,6 +321,8 @@ def main():
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
+                tr_dataloader=tr_dataloader,
+                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
