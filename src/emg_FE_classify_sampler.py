@@ -19,7 +19,7 @@ class EMG_FE_Classify_Sampler(object):
     nWin = 41
 
 
-    def __init__(self, option, index= None):
+    def __init__(self, option, sTest,index= None):
         '''
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -33,11 +33,10 @@ class EMG_FE_Classify_Sampler(object):
         # Todo: Possible query and support indexes
         # Todo: Confirm test subject
         self.index = index
-        self.index_test_subject = option.test_subject_index
+        self.sTest = sTest
         self.sample_per_class = option.num_support_tr
         self.iterations = option.iterations
         self.nDomain = 5
-        self.mode = mode
 
 
     def __iter__(self):
@@ -45,53 +44,24 @@ class EMG_FE_Classify_Sampler(object):
         yield a batch of indexes
         '''
         spc = self.sample_per_class
+        cpi = self.nFE
+        sTest = self.sTest
         index = self.index
-        iterations = self.iterations
 
-        # Todo: 다른 피험자로부터 train test 나눔
-        # sVal = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])
-        # sVal = np.random.permutation(sVal)[0]
-        # sTrain = core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject, sVal])
-        # sTrain = np.random.permutation(sTrain)[0]
-        if self.mode == 'test':
-            dQuery = 0
-            support = []
-            for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
-                support.append(get_idx_of_support(self.nFE, index, self.index_test_subject, dQuery, spc))
-            query = get_idx_of_query(self.nFE, index, self.index_test_subject, dQuery)
+        for it in range(self.iterations):
+            temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(self.nSub), [sTest]))[:2]
+            si = temp[0]
+            sj = temp[1]
+            for t in range(self.nFE):
+                support = get_idx_of_support(self.nFE, index, si, 0, spc)
+                query = []
+                for d  in range(1, self.nDomain):
+                    query.append(get_idx_of_support(self.nFE, index, si, d))
 
-            # index 합치기
-            batch = []
-            batch.append(np.array(query).ravel().tolist())
-            batch.append(np.array(support).ravel().tolist())
-            yield np.array(batch).ravel().tolist()
-        else:
-            for sVal in tqdm(core.getIdxExclude_of_inputIndex(range(0, self.nSub), [self.index_test_subject])):
-                # TODO: Trianin/ sVal에서 leave-one-subject-out cross vlalidation의 instacne 구함
-                if self.mode == 'train':
-                    for sTrain in (core.getIdxExclude_of_inputIndex(range(0, self.nSub),
-                                                                        [self.index_test_subject, sVal])):
-                        # Todo: training data
-                        # query = []
+                yield 
 
-                        for dQuery in range(self.nDomain): # Todo: domain 랜덤으로 두개 선택 하기나누기
-                            # dQuery = 1
-                            query = get_idx_of_query(self.nFE, index, sTrain, dQuery, spc)
-                            support = []
-                            for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
-                                support.append(get_idx_of_support(self.nFE, index, sTrain, dSupport))
-                            # index 합치기
-                            yield (np.array(query).ravel().tolist() + np.array(support).ravel().tolist())
 
-                if self.mode =='val':
-                    for dQuery in range(self.nDomain):  # Todo: domain 랜덤으로 두개 선택 하기나누기
-                        # dQuery = 1
-                        query = get_idx_of_query(self.nFE, index, sVal, dQuery, spc)
-                        support = []
-                        for dSupport in core.getIdxExclude_of_inputIndex(range(self.nDomain), [dQuery]):
-                            support.append(get_idx_of_support(self.nFE, index, sVal, dSupport))
-                        # index 합치기
-                        yield (np.array(query).ravel().tolist() + np.array(support).ravel().tolist())
+
 
     def __len__(self):
         '''

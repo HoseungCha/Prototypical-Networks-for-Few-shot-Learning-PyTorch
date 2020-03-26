@@ -130,6 +130,19 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
 
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
+    nSub = 10
+    nFE = 11
+    iteration = 1000
+
+    for sTest in range(nSub):
+        # for i in range(iteration):
+        #     temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(nSub), [sTest]))[:2]
+        #     si = temp[0]
+        #     sj = temp[1]
+        #     for t in range(nFE):
+        #         get_idx_of_q(self.nFE, index, self.index_test_subject, dQuery)
+
+
 
     for epoch in range(opt.epochs):
         print('=== Epoch: {} ==='.format(epoch))
