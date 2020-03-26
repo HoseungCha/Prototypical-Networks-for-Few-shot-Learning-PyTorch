@@ -112,7 +112,7 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
+def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None, test_dataloader=None):
     '''
     Train the model with the prototypical learning algorithm
     '''
@@ -126,31 +126,33 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
     val_loss = []
     val_acc = []
     best_acc = 0
-
+    nFE = 11
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
 
-    for epoch in range(opt.epochs):
+    for i, epoch in enumerate(range(opt.epochs)):
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
+        val_iter = iter(val_dataloader)
+        test_iter = iter(test_dataloader)
         model.train()
-        for batch in tqdm(tr_iter):
+        for i in tqdm(range(360)):
+            batch = next(tr_iter)
             optim.zero_grad()
-            batch_x, batch_y = batch
+            x, y = batch
+            # Compute Covariance
+            x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(),1,2),estimator='cov')
+            # Compute Reference Cov Mean
+            Cref = mean.mean_riemann(x_cov[:opt.num_support_tr*nFE]) # query index 만큼만 들어감
+            # Tangent Mapping
+            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
 
-            # Todo: Prepare Training Dataset
-            x_train = batch_x[0:int(batch_x.shape[0]/2)]
-            y_train = batch_y[0:int(batch_x.shape[0]/2)]
-
-            # Todo: Riemannian Feature Extraction
-            cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
-            Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
-            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
             # Todo: Forward and Caculate Loss
-            x, y = x_feat_train.to(device), y_train.to(device)
+            x, y = x_feat_train.to(device), y.to(device)
             model_output = model(torch.unsqueeze(x,1))
             loss, acc = loss_fn(model_output, target=y,
                                 n_support=opt.num_support_tr)
+
             # Todo: Prepare gradients, Update Parameters, and Evaluation
             loss.backward()
             optim.step()
@@ -159,48 +161,53 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
             train_loss.append(loss.item())
             train_acc.append(acc.item())
 
-            # Todo: Prepare Training Dataset
-            x_test = batch_x[int(batch_x.shape[0]/2):]
-            y_test = batch_y[int(batch_y.shape[0]/2):]
+            print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
-            # Todo: Riemannian Feature Extraction
-            cov = covariance.covariances(np.swapaxes(x_test.cpu().numpy(), 1, 2), estimator='cov')
-            x_feat_test = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+            #============================================VALIDAION=====================================
+            for j in range(5):
+                model.eval()
+                batch = next(val_iter)
+                x, y = batch
+                # Compute Covariance
+                x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
+                # Compute Reference Cov Mean
+                Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
+                # Tangent Mapping
+                x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
 
-            # Todo: Forward and Evaluation Test data
-            x, y = x_feat_test.to(device), y_test.to(device)
-            model_output = model(torch.unsqueeze(x,1))
-            loss, acc = loss_fn(model_output, target=y,
-                                n_support=opt.num_support_val)
-            # Todo: Save results
-            val_loss.append(loss.item())
-            val_acc.append(acc.item())
+                # Todo: Forward and Caculate Loss
+                x, y = x_feat_train.to(device), y.to(device)
+                model_output = model(torch.unsqueeze(x,1))
+                loss, acc = loss_fn(model_output, target=y, n_support=opt.num_support_val)
+                val_loss.append(loss.item())
+                val_acc.append(acc.item())
+                # print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
-        # Compute loss and acc of training data
-        avg_loss = np.mean(train_loss[-opt.iterations:])
-        avg_acc = np.mean(train_acc[-opt.iterations:])
-        print('Avg Train Loss: {}, Avg Train Acc: {}'.format(avg_loss, avg_acc))
+                if j== 4:
+                    avg_loss = np.mean(val_loss[-5:])
+                    avg_acc = np.mean(val_acc[-5:])
+                    postfix = ' (Best)' if acc >= best_acc else ' (Best: {})'.format(
+                        best_acc)
+                    print('AVG Val Loss: {}, AVG Val Acc: {}{}'.format(
+                        avg_loss, avg_acc, postfix))
+
+                    if avg_acc >= best_acc:
+                        torch.save(model.state_dict(), best_model_path)
+                        best_acc = avg_acc
+                        best_state = model.state_dict()
+
+            # ============================================VALIDAION END=====================================
+
+        # update learning rate
         lr_scheduler.step()
 
-        # Compute loss and acc of validation data
-        avg_loss = np.mean(val_loss[-opt.iterations:])
-        avg_acc = np.mean(val_acc[-opt.iterations:])
-        postfix = ' (Best)' if avg_acc >= best_acc else ' (Best: {})'.format(
-            best_acc)
-        print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
-            avg_loss, avg_acc, postfix))
-
-        if avg_acc >= best_acc:
-            torch.save(model.state_dict(), best_model_path)
-            best_acc = avg_acc
-            best_state = model.state_dict()
-
+    # 최종 모델 저장
     torch.save(model.state_dict(), last_model_path)
 
+    # 각종 정확도 저장
     for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
         save_list_to_file(os.path.join(opt.experiment_root,
                                        name + '.txt'), locals()[name])
-
     return best_state, best_acc, train_loss, train_acc, val_loss, val_acc
 
 
@@ -270,6 +277,7 @@ def main():
     res = train(opt=options,
                 tr_dataloader=tr_dataloader,
                 val_dataloader=val_dataloader,
+                test_dataloader=test_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
