@@ -64,7 +64,7 @@ def init_sampler(opt, dataset, mode):
         index['t'] = dataset.t
         index['s'] = dataset.s
         index['d'] = dataset.d
-        returnSampler = EMG_FE_Classify_Sampler(option=opt, index = index)
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, index=index, mode=mode)
 
     return returnSampler
 
@@ -259,8 +259,8 @@ def main():
     init_seed(options)
 
     tr_dataloader = init_dataloader(options, 'train')
-    tr_dataloader = init_dataloader(options, 'test')
-    # val_dataloader = init_dataloader(options, 'val')
+    test_dataloader = init_dataloader(options, 'test')
+    val_dataloader = init_dataloader(options, 'val')
     # trainval_dataloader = init_dataloader(options, 'trainval')
     # test_dataloader = init_dataloader(options, 'test')
 
@@ -269,6 +269,7 @@ def main():
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
                 tr_dataloader=tr_dataloader,
+                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
