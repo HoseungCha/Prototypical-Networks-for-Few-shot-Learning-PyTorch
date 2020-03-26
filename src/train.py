@@ -34,8 +34,11 @@ def init_seed(opt):
     torch.cuda.manual_seed(opt.manual_seed)
 
 
-def init_dataset(opt):
-    dataset = EMG_dataset(option=opt)
+def init_dataset(opt, mode):
+    if opt.dataset_type == 'omniglot':
+        dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
+    else:
+        dataset = EMG_dataset(mode=mode, option=opt)
 
     n_classes = len(np.unique(dataset.t))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
@@ -46,22 +49,22 @@ def init_dataset(opt):
 
 
 def init_sampler(opt, dataset, mode):
-    # if 'train' in mode:
-    #     classes_per_it = opt.classes_per_it_tr
-    #     num_samples = opt.num_support_tr + opt.num_query_tr
-    # else:
-    #     classes_per_it = opt.classes_per_it_val
-    #     num_samples = opt.num_support_val + opt.num_query_val
-    #
-    # if opt.dataset_type == 'omniglot':
-    #     returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
-    #                              iterations=opt.iterations)
-    # else:
-    index = {}
-    index['t'] = dataset.t
-    index['s'] = dataset.s
-    index['d'] = dataset.d
-    returnSampler = EMG_FE_Classify_Sampler(option=opt,mode = mode, index = index)
+    if 'train' in mode:
+        classes_per_it = opt.classes_per_it_tr
+        num_samples = opt.num_support_tr + opt.num_query_tr
+    else:
+        classes_per_it = opt.classes_per_it_val
+        num_samples = opt.num_support_val + opt.num_query_val
+
+    if opt.dataset_type == 'omniglot':
+        returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
+                                 iterations=opt.iterations)
+    else:
+        index = {}
+        index['t'] = dataset.t
+        index['s'] = dataset.s
+        index['d'] = dataset.d
+        returnSampler = EMG_FE_Classify_Sampler(option=opt, index = index)
 
     return returnSampler
 
@@ -71,6 +74,19 @@ def init_dataloader(opt, mode):
     sampler = init_sampler(opt, dataset, mode)
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
     return dataloader
+
+
+def init_protonet(opt):
+    '''
+    Initialize the ProtoNet
+    '''
+    device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
+    if opt.dataset_type == 'EMG_dataset':
+        model = FeNet().to(device)
+    else:
+        model = ProtoNet().to(device)
+
+    return model
 
 
 def init_optim(opt, model):
@@ -96,7 +112,7 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, tr_dataloader=None, val_dataloader=None, model=None, optim=None, lr_scheduler=None):
+def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
     '''
     Train the model with the prototypical learning algorithm
     '''
@@ -119,24 +135,17 @@ def train(opt, tr_dataloader=None, val_dataloader=None, model=None, optim=None, 
         tr_iter = iter(tr_dataloader)
         model.train()
         for batch in tqdm(tr_iter):
-        # for batch in (tr_iter):
             optim.zero_grad()
             batch_x, batch_y = batch
-            nFE = 11
-            nSeg = batch_x.shape[1]
-            nInsWin = batch_x.shape[2]
-            nCh = batch_x.shape[3]
+
             # Todo: Prepare Training Dataset
-            x_all = batch_x.view(batch_x.shape[0]*nSeg,nInsWin,nCh)
-            # x_train = batch_x[:nFE].view(nFE*nSeg,-1,8)
-            y_train = batch_y.view(batch_x.shape[0]*nSeg)
+            x_train = batch_x[0:int(batch_x.shape[0]/2)]
+            y_train = batch_y[0:int(batch_x.shape[0]/2)]
 
             # Todo: Riemannian Feature Extraction
-            # cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
-            covAll = covariance.covariances(np.swapaxes(x_all.cpu().numpy(),1, 2),estimator='cov')
-            Cref = mean.mean_riemann(covAll[:nFE*nSeg])
-            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(covAll, Cref))
-
+            cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
+            Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
+            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
             # Todo: Forward and Caculate Loss
             x, y = x_feat_train.to(device), y_train.to(device)
             model_output = model(torch.unsqueeze(x,1))
@@ -249,44 +258,54 @@ def main():
 
     init_seed(options)
 
-    def init_dataloader(opt, mode):
-        dataset = init_dataset(opt, mode)
-        sampler = init_sampler(opt, dataset, mode)
-        dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
-        return dataloader
+    tr_dataloader = init_dataloader(options, 'train')
+    tr_dataloader = init_dataloader(options, 'test')
+    # val_dataloader = init_dataloader(options, 'val')
+    # trainval_dataloader = init_dataloader(options, 'trainval')
+    # test_dataloader = init_dataloader(options, 'test')
 
-    # load dataset
-    dataload = {}
-    dataset = init_dataset(options)
-    for str in ['train', 'val', 'test']:
-        dataload[str] = torch.utils.data.DataLoader(dataset, batch_sampler=init_sampler(options, dataset, str))
-
-    # get model and prepare optimization
-    device = 'cuda:0' if torch.cuda.is_available() and options.cuda else 'cpu'
-    model = FeNet().to(device)
+    model = init_protonet(options)
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
-
-    # train and search best model
     res = train(opt=options,
-                tr_dataloader=dataload['train'],
-                val_dataloader=dataload['val'],
+                tr_dataloader=tr_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
-
-    # show results
+    #
+    # res = train(opt=options,
+    #             tr_dataloader=tr_dataloader,
+    #             val_dataloader=val_dataloader,
+    #             model=model,
+    #             optim=optim,
+    #             lr_scheduler=lr_scheduler)
     best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
     print('Testing with last model..')
     test(opt=options,
-         test_dataloader=dataload['test'],
+         test_dataloader=test_dataloader,
          model=model)
 
     model.load_state_dict(best_state)
     print('Testing with best model..')
     test(opt=options,
-         test_dataloader=dataload['test'],
+         test_dataloader=test_dataloader,
          model=model)
+
+    # optim = init_optim(options, model)
+    # lr_scheduler = init_lr_scheduler(options, optim)
+
+    # print('Training on train+val set..')
+    # train(opt=options,
+    #       tr_dataloader=trainval_dataloader,
+    #       val_dataloader=None,
+    #       model=model,
+    #       optim=optim,
+    #       lr_scheduler=lr_scheduler)
+
+    # print('Testing final model..')
+    # test(opt=options,
+    #      test_dataloader=test_dataloader,
+    #      model=model)
 
 
 if __name__ == '__main__':

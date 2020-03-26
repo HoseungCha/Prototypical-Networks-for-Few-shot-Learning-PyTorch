@@ -28,7 +28,7 @@ class EMG_dataset(data.Dataset):
 
 
 
-    def __init__(self, root='..' + os.sep + 'dataset_EMG',
+    def __init__(self, mode='train', root='..' + os.sep + 'dataset_EMG',
                  transform=None, target_transform=None, download=True, option=None):
         '''
         The items are (filename,category). The index of all the categories can be found in self.idx_classes
@@ -68,16 +68,16 @@ class EMG_dataset(data.Dataset):
                             dataset['s'].append(s)
                             dataset['t'].append(t)
                             if k < 5:
-                                d = 0
-                            elif k >= 5 and k < 10:
                                 d = 1
-                            elif k >= 10 and k < 15:
+                            elif k >= 5 and k < 10:
                                 d = 2
-                            elif k >= 15 and k < 20:
+                            elif k >= 10 and k < 15:
                                 d = 3
-                            elif k >= 20 and k < 25:
+                            elif k >= 15 and k < 20:
                                 d = 4
-                            dataset['d'].append(d)
+                            elif k>= 20:
+                                d = 5
+                            dataset['d'].append(k)
 
             torch.save(dataset, EMG_tensor_path)
         self.x = dataset['x']
@@ -86,16 +86,10 @@ class EMG_dataset(data.Dataset):
         self.d = dataset['d']
 
     def __getitem__(self, idx):
-
-        x = torch.LongTensor(idx.shape[0], self.x[0].shape[0], self.x[0].shape[1])
-        y = torch.LongTensor(idx.shape[0])
-        for c in range(idx.shape[0]):
-            x[c] = self.x[idx[c]]
-            y[c] =  self.t[idx[c]]
-
+        x = self.x[idx]
         if self.transform:
             x = self.transform(x)
-        return x, y
+        return x, self.t[idx]
 
     def __len__(self):
         return len(self.all_items)
