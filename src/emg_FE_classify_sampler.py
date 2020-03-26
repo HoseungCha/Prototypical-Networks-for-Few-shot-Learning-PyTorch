@@ -37,7 +37,6 @@ class EMG_FE_Classify_Sampler(object):
         self.sample_per_class = option.num_support_tr
         self.iterations = option.iterations
         self.nDomain = 5
-
         self.mode = mode
 
 
