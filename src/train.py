@@ -130,88 +130,12 @@ def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
     val_loss = []
     val_acc = []
     best_acc = 0
-    nFE = 11
-    nSub = 10
+
+
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
 
-    for sTest in range(nSub):
-        # best models will be searched using bess validation accuracy
-        val_loss = []
-        val_acc = []
-        for sVal in core.getIdxExclude_of_inputIndex(range(0, nSub),[sTest]):
-            # load validation dataloader
-            dataset = EMG_dataset(option=opt)
-            sampler = init_sampler(opt, dataset, 'val')
-            dataloader_val = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
-            val_iter = iter(dataloader_val)
-            for sTrain in core.getIdxExclude_of_inputIndex(range(0, nSub),[sTest, sVal]):
-                # train with  dataset including sTrains (8 subjects)
-                dataset = EMG_dataset(option=opt)
-                sampler = init_sampler(opt, dataset, 'train')
-                dataloader_train = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
-                tr_iter = iter(dataloader_train)
-                #========================train==========================================$
-                for batch in tqdm(tr_iter):
-                    x, y = batch
-                    # Compute Covariance
-                    x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
-                    # Compute Reference Cov Mean
-                    Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
-                    # Tangent Mapping
-                    x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
-
-                    # Todo: Forward and Caculate Loss
-                    x, y = x_feat_train.to(device), y.to(device)
-                    model_output = model(torch.unsqueeze(x, 1))
-                    loss, acc = loss_fn(model_output, target=y,
-                                        n_support=opt.num_support_tr)
-
-                    # Todo: Prepare gradients, Update Parameters, and Evaluation
-                    loss.backward()
-                    optim.step()
-
-                    # Todo: Save results
-                    train_loss.append(loss.item())
-                    train_acc.append(acc.item())
-
-                    print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
-
-                    # validation 평가
-                    for batch_val in val_iter:
-                        model.eval()
-                        x, y = batch_val
-                        # Compute Covariance
-                        x_cov = covariance.covariances(np.swapaxes(x.cpu().numpy(), 1, 2), estimator='cov')
-                        # Compute Reference Cov Mean
-                        Cref = mean.mean_riemann(x_cov[:opt.num_support_tr * nFE])  # query index 만큼만 들어감
-                        # Tangent Mapping
-                        x_feat_train = torch.FloatTensor(tangentspace.tangent_space(x_cov, Cref))
-
-                        # Todo: Forward and Caculate Loss
-                        x, y = x_feat_train.to(device), y.to(device)
-                        model_output = model(torch.unsqueeze(x, 1))
-                        loss, acc = loss_fn(model_output, target=y, n_support=opt.num_support_val)
-                        val_loss.append(loss.item())
-                        val_acc.append(acc.item())
-
-
-
-
-    # using the best model, evaluate the test subject
-    # dataset = EMG_dataset(option=opt)
-    sampler = init_sampler(opt, dataset, 'val')
-    dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
-
-
-
-
-
-
-
-    for i, epoch in enumerate(range(opt.epochs)):
-
-
+    for epoch in range(opt.epochs):
         print('=== Epoch: {} ==='.format(epoch))
         tr_iter = iter(tr_dataloader)
         model.train()
