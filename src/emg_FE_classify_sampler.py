@@ -39,6 +39,7 @@ class EMG_FE_Classify_Sampler(object):
         self.nDomain = 5
 
 
+
     def __iter__(self):
         '''
         yield a batch of indexes
