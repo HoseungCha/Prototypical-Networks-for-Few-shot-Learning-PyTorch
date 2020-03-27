@@ -127,12 +127,16 @@ def train(opt, model, optim, lr_scheduler):
         # training dataset loader
         trainValDataloader = torch.utils.data.DataLoader\
             (dataset, batch_sampler= EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
+
         # test dataset loader
         testDataloader = torch.utils.data.DataLoader \
             (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
+        test_iter = iter(testDataloader)
+        batch = next(test_iter)
+        batch_x_test, batch_y_test = batch
 
         tr_iter = iter(trainValDataloader)
-        test_iter = iter(testDataloader)
+
 
         model.train()
         for epoch in range(opt.epochs):
@@ -165,9 +169,7 @@ def train(opt, model, optim, lr_scheduler):
                 val_acc.append(acc.item())
 
                 # Todo: Get Test Accuracy
-                batch = next(test_iter)
-                batch_x, batch_y = batch
-                loss, acc = featExt_and_compLossAcc(opt, model, batch_x, batch_y)
+                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
                 print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
             print('=== Epoch: {}  Finished ==='.format(epoch))
             lr_scheduler.step()
@@ -179,6 +181,8 @@ def train(opt, model, optim, lr_scheduler):
                 best_acc)
             print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
                 avg_loss, avg_acc, postfix))
+            print('Test Loss: {}, Test Acc: {}{}'.format(
+                loss, acc))
 
             if avg_acc >= best_acc:
                 torch.save(model.state_dict(), best_model_path)
