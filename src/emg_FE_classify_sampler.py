@@ -2,6 +2,7 @@
 import numpy as np
 import torch
 from utils import core
+import itertools
 
 class EMG_FE_Classify_Sampler(object):
     '''
@@ -19,7 +20,7 @@ class EMG_FE_Classify_Sampler(object):
     nWin = 41
 
 
-    def __init__(self, option, sTest,index= None):
+    def __init__(self, option, sExclude = None, sExtract= None, index= None):
         '''
         Initialize the PrototypicalBatchSampler object
         Args:
@@ -33,11 +34,11 @@ class EMG_FE_Classify_Sampler(object):
         # Todo: Possible query and support indexes
         # Todo: Confirm test subject
         self.index = index
-        self.sTest = sTest
+        self.sExclude = sExclude
         self.sample_per_class = option.num_support_tr
         self.iterations = option.iterations
         self.nDomain = 5
-
+        self.sExtract = sExtract
 
     def __iter__(self):
         '''
@@ -45,22 +46,38 @@ class EMG_FE_Classify_Sampler(object):
         '''
         spc = self.sample_per_class
         cpi = self.nFE
-        sTest = self.sTest
+        sExclude = self.sExclude
         index = self.index
 
-        for it in range(self.iterations):
-            temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(self.nSub), [sTest]))[:2]
-            si = temp[0]
-            sj = temp[1]
-            for t in range(self.nFE):
-                support = get_idx_of_support(self.nFE, index, si, 0, spc)
-                query = []
-                for d  in range(1, self.nDomain):
-                    query.append(get_idx_of_support(self.nFE, index, si, d))
+        if self.sExtract is None:
+            for it in range(self.iterations):
+                temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(self.nSub), [sExclude]))[:2]
+                si = temp[0] # training
+                sj = temp[1] # validation
 
-                yield 
+                batch = []
+                for s in [si, sj]:
+                    support = []
+                    query = []
+                    support.append(get_idx_of_support(self.nFE, index, s, 0, spc))
+                    for d  in range(1, self.nDomain):
+                        query.append(get_idx_of_query(self.nFE, index, s, d))
+                    batch.append(support)
+                    batch.append(query)
 
+                yield list(itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
+        elif self.sExclude is None:
+            batch = []
+            support = []
+            query = []
+            support.append(get_idx_of_support(self.nFE, index, self.sExtract, 0, spc))
+            for d in range(1, self.nDomain):
+                query.append(get_idx_of_query(self.nFE, index, self.sExtract, d))
+            batch.append(support)
+            batch.append(query)
 
+            yield list(
+                itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
 
 
     def __len__(self):
@@ -74,22 +91,22 @@ def get_idx_from_std(index, s, t, d):
     a1 = torch.IntTensor(index['s']).eq(s).nonzero()
     a2 = torch.IntTensor(index['t']).eq(t).nonzero()
     a3 = torch.IntTensor(index['d']).eq(d).nonzero()
-    return torch.IntTensor(np.intersect1d(np.intersect1d(a1.numpy(), a2.numpy()), a3.numpy()))
+    return (np.intersect1d(np.intersect1d(a1.numpy(), a2.numpy()), a3.numpy()))
 
-def get_idx_of_query(nFE,index, sTrain, dQuery,spc):
+def get_idx_of_query(nFE,index, sTrain, dQuery):
     query = []
     support = []
     for t in range(nFE):
         found = get_idx_from_std(index, sTrain, t, dQuery)
-        query.append((found)[torch.randperm(found.__len__())[:spc]])
+        query.append((found)[torch.randperm(found.__len__())[:]])
 
     return query
 
-def get_idx_of_support(nFE,index, s, dSupport,):
+def get_idx_of_support(nFE,index, s, dSupport, spc):
     support = []
     for t in range(nFE):
         found = get_idx_from_std(index, s, t, dSupport)
-        support.append((found)[torch.randperm(found.__len__())[:]])
+        support.append((found)[torch.randperm(found.__len__())[:spc]])
     return support
 
 

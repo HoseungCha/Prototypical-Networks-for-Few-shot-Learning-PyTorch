@@ -21,7 +21,7 @@ from pyriemann.utils import mean
 from pyriemann.utils import covariance
 from pyriemann.utils import tangentspace
 from tqdm import tqdm
-
+import itertools
 
 
 
@@ -35,11 +35,9 @@ def init_seed(opt):
     torch.cuda.manual_seed(opt.manual_seed)
 
 
-def init_dataset(opt, mode):
-    if opt.dataset_type == 'omniglot':
-        dataset = OmniglotDataset(mode=mode, root=opt.dataset_root)
-    else:
-        dataset = EMG_dataset(option=opt)
+def init_dataset(opt):
+
+    dataset = EMG_dataset(option=opt)
 
     n_classes = len(np.unique(dataset.t))
     if n_classes < opt.classes_per_it_tr or n_classes < opt.classes_per_it_val:
@@ -50,29 +48,18 @@ def init_dataset(opt, mode):
 
 
 
-def init_sampler(opt, dataset, mode):
-    if 'train' in mode:
-        classes_per_it = opt.classes_per_it_tr
-        num_samples = opt.num_support_tr + opt.num_query_tr
-    else:
-        classes_per_it = opt.classes_per_it_val
-        num_samples = opt.num_support_val + opt.num_query_val
+def init_sampler(opt, dataset, sTest):
+    index = {}
+    index['t'] = dataset.t
+    index['s'] = dataset.s
+    index['d'] = dataset.d
 
-    if opt.dataset_type == 'omniglot':
-        returnSampler  = PrototypicalBatchSampler(labels=dataset.y,
-                                 iterations=opt.iterations)
-    else:
-        index = {}
-        index['t'] = dataset.t
-        index['s'] = dataset.s
-        index['d'] = dataset.d
-        returnSampler = EMG_FE_Classify_Sampler(option=opt, index = index)
-    return returnSampler
+    return EMG_FE_Classify_Sampler(option=opt, index = index, sTest = sTest)
 
 
-def init_dataloader(opt, mode):
-    dataset = init_dataset(opt, mode)
-    sampler = init_sampler(opt, dataset, mode)
+def init_dataloader(opt, sTest):
+    dataset = init_dataset(opt)
+    sampler = init_sampler(opt, dataset, sTest)
     dataloader = torch.utils.data.DataLoader(dataset, batch_sampler=sampler)
     return dataloader
 
@@ -113,103 +100,92 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, tr_dataloader, model, optim, lr_scheduler, val_dataloader=None):
+def train(opt, model, optim, lr_scheduler):
     '''
     Train the model with the prototypical learning algorithm
     '''
 
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
-    if val_dataloader is None:
-        best_state = None
+    best_state = True
     train_loss = []
     train_acc = []
     val_loss = []
     val_acc = []
     best_acc = 0
-
+    nSub = 10
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     last_model_path = os.path.join(opt.experiment_root, 'last_model.pth')
-    nSub = 10
-    nFE = 11
-    iteration = 1000
+    dataset = EMG_dataset(option=opt)
+    index = {}
+    index['t'] = dataset.t
+    index['s'] = dataset.s
+    index['d'] = dataset.d
 
     for sTest in range(nSub):
-        # for i in range(iteration):
-        #     temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(nSub), [sTest]))[:2]
-        #     si = temp[0]
-        #     sj = temp[1]
-        #     for t in range(nFE):
-        #         get_idx_of_q(self.nFE, index, self.index_test_subject, dQuery)
+        print('=== sTest: {} ==='.format(sTest))
+        # training dataset loader
+        trainValDataloader = torch.utils.data.DataLoader\
+            (dataset, batch_sampler= EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
+        # test dataset loader
+        testDataloader = torch.utils.data.DataLoader \
+            (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
 
+        tr_iter = iter(trainValDataloader)
+        test_iter = iter(testDataloader)
 
-
-    for epoch in range(opt.epochs):
-        print('=== Epoch: {} ==='.format(epoch))
-        tr_iter = iter(tr_dataloader)
         model.train()
-        for batch in tqdm(tr_iter):
-            optim.zero_grad()
-            batch_x, batch_y = batch
+        for epoch in range(opt.epochs):
+            print('=== Epoch: {} ==='.format(epoch))
+            for batch in tqdm(tr_iter):
+                print('\n')
+                optim.zero_grad()
+                batch_x, batch_y = batch
 
-            # Todo: Prepare Training Dataset
-            x_train = batch_x[0:int(batch_x.shape[0]/2)]
-            y_train = batch_y[0:int(batch_x.shape[0]/2)]
+                # Todo: feature extraction and compute Loss and accuacy
+                loss, acc = featExt_and_compLossAcc\
+                    (opt, model,batch_x[0:int(batch_x.shape[0]/2)],batch_y[0:int(batch_x.shape[0]/2)])
+                print('Train Loss: {}, Train Acc: {}'.format(loss, acc))
 
-            # Todo: Riemannian Feature Extraction
-            cov = covariance.covariances(np.swapaxes(x_train.cpu().numpy(),1, 2),estimator='cov')
-            Cref = mean.mean_riemann(cov[:int(cov.shape[0]/2)])
-            x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
-            # Todo: Forward and Caculate Loss
-            x, y = x_feat_train.to(device), y_train.to(device)
-            model_output = model(torch.unsqueeze(x,1))
-            loss, acc = loss_fn(model_output, target=y,
-                                n_support=opt.num_support_tr)
-            # Todo: Prepare gradients, Update Parameters, and Evaluation
-            loss.backward()
-            optim.step()
+                # Todo: Prepare gradients, Update Parameters, and Evaluation
+                loss.backward()
+                optim.step()
 
-            # Todo: Save results
-            train_loss.append(loss.item())
-            train_acc.append(acc.item())
+                # Todo: Save results
+                train_loss.append(loss.item())
+                train_acc.append(acc.item())
 
-            # Todo: Prepare Training Dataset
-            x_test = batch_x[int(batch_x.shape[0]/2):]
-            y_test = batch_y[int(batch_y.shape[0]/2):]
+                # Todo: feature extraction and compute Loss and Accuracy in Test dataset
+                loss, acc = featExt_and_compLossAcc\
+                    (opt, model,batch_x[int(batch_x.shape[0] / 2):],batch_y[int(batch_x.shape[0] / 2):])
+                print('Val Loss: {}, Val Acc: {}'.format(loss, acc))
 
-            # Todo: Riemannian Feature Extraction
-            cov = covariance.covariances(np.swapaxes(x_test.cpu().numpy(), 1, 2), estimator='cov')
-            x_feat_test = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+                # Todo: Save results
+                val_loss.append(loss.item())
+                val_acc.append(acc.item())
 
-            # Todo: Forward and Evaluation Test data
-            x, y = x_feat_test.to(device), y_test.to(device)
-            model_output = model(torch.unsqueeze(x,1))
-            loss, acc = loss_fn(model_output, target=y,
-                                n_support=opt.num_support_val)
-            # Todo: Save results
-            val_loss.append(loss.item())
-            val_acc.append(acc.item())
+                # Todo: Get Test Accuracy
+                batch = next(test_iter)
+                batch_x, batch_y = batch
+                loss, acc = featExt_and_compLossAcc(opt, model, batch_x, batch_y)
+                print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
+            print('=== Epoch: {}  Finished ==='.format(epoch))
+            lr_scheduler.step()
+            print('=== Leaning Rate Update ==='.format(epoch))
 
-        # Compute loss and acc of training data
-        avg_loss = np.mean(train_loss[-opt.iterations:])
-        avg_acc = np.mean(train_acc[-opt.iterations:])
-        print('Avg Train Loss: {}, Avg Train Acc: {}'.format(avg_loss, avg_acc))
-        lr_scheduler.step()
+            avg_loss = np.mean(val_loss[-opt.iterations:])
+            avg_acc = np.mean(val_acc[-opt.iterations:])
+            postfix = ' (Best)' if avg_acc >= best_acc else ' (Best: {})'.format(
+                best_acc)
+            print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
+                avg_loss, avg_acc, postfix))
 
-        # Compute loss and acc of validation data
-        avg_loss = np.mean(val_loss[-opt.iterations:])
-        avg_acc = np.mean(val_acc[-opt.iterations:])
-        postfix = ' (Best)' if avg_acc >= best_acc else ' (Best: {})'.format(
-            best_acc)
-        print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
-            avg_loss, avg_acc, postfix))
+            if avg_acc >= best_acc:
+                torch.save(model.state_dict(), best_model_path)
+                best_acc = avg_acc
+                best_state = model.state_dict()
 
-        if avg_acc >= best_acc:
-            torch.save(model.state_dict(), best_model_path)
-            best_acc = avg_acc
-            best_state = model.state_dict()
-
-    torch.save(model.state_dict(), last_model_path)
+        torch.save(model.state_dict(), last_model_path)
 
     for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc']:
         save_list_to_file(os.path.join(opt.experiment_root,
@@ -258,6 +234,19 @@ def eval(opt):
          test_dataloader=test_dataloader,
          model=model)
 
+def featExt_and_compLossAcc(opt, model, x_train, y_train):
+    device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
+
+    # Todo: Riemannian Feature Extraction
+    cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
+    Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+    x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+    # Todo: Forward and Caculate Loss
+    x, y = x_feat_train.to(device), y_train.to(device)
+    model_output = model(torch.unsqueeze(x,1))
+    loss, acc = loss_fn(model_output, target=y,
+                        n_support=opt.num_support_tr)
+    return loss, acc
 
 def main():
     '''
@@ -272,34 +261,19 @@ def main():
 
     init_seed(options)
 
+    # tr_dataloader = tr_dataloader,
 
-    tr_dataloader = init_dataloader(options, 'train')
-    tr_dataloader = init_dataloader(options, 'test')
-    # val_dataloader = init_dataloader(options, 'val')
-    # trainval_dataloader = init_dataloader(options, 'trainval')
+    # tr_dataloader = init_dataloader(options, 'train')
     # test_dataloader = init_dataloader(options, 'test')
 
     model = init_protonet(options)
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
-                tr_dataloader=tr_dataloader,
-                val_dataloader=val_dataloader,
                 model=model,
                 optim=optim,
                 lr_scheduler=lr_scheduler)
 
-    # tr_dataloader = tr_dataloader,
-    # val_dataloader = val_dataloader,
-    # test_dataloader = test_dataloader,
-    #
-    #
-    # res = train(opt=options,
-    #             tr_dataloader=tr_dataloader,
-    #             val_dataloader=val_dataloader,
-    #             model=model,
-    #             optim=optim,
-    #             lr_scheduler=lr_scheduler)
     best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
     print('Testing with last model..')
     test(opt=options,
