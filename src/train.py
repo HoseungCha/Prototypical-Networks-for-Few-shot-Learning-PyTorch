@@ -1,6 +1,6 @@
 # coding=utf-8
 import matplotlib
-matplotlib.use('TkAgg')
+# matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 import torch
@@ -22,7 +22,7 @@ from pyriemann.utils import covariance
 from pyriemann.utils import tangentspace
 from tqdm import tqdm
 import itertools
-
+import time
 
 
 def init_seed(opt):
@@ -112,6 +112,9 @@ def train(opt, model, optim, lr_scheduler):
     train_acc = []
     val_loss = []
     val_acc = []
+    test_loss = []
+    test_acc = []
+
     best_acc = 0
     nSub = 10
     best_model_path = os.path.join(opt.experiment_root, 'best_model.pth')
@@ -124,10 +127,6 @@ def train(opt, model, optim, lr_scheduler):
 
     for sTest in range(nSub):
         print('=== sTest: {} ==='.format(sTest))
-        # training dataset loader
-        trainValDataloader = torch.utils.data.DataLoader\
-            (dataset, batch_sampler= EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
-
         # test dataset loader
         testDataloader = torch.utils.data.DataLoader \
             (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
@@ -135,13 +134,15 @@ def train(opt, model, optim, lr_scheduler):
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
 
-        tr_iter = iter(trainValDataloader)
-
-
-        model.train()
         for epoch in range(opt.epochs):
             print('=== Epoch: {} ==='.format(epoch))
+            time.sleep(0.01)
+            # training dataset loader
+            trainValDataloader = torch.utils.data.DataLoader \
+                (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
+            tr_iter = iter(trainValDataloader)
             for batch in tqdm(tr_iter):
+                model.train()
                 print('\n')
                 optim.zero_grad()
                 batch_x, batch_y = batch
@@ -159,6 +160,7 @@ def train(opt, model, optim, lr_scheduler):
                 train_loss.append(loss.item())
                 train_acc.append(acc.item())
 
+                model.eval()
                 # Todo: feature extraction and compute Loss and Accuracy in Test dataset
                 loss, acc = featExt_and_compLossAcc\
                     (opt, model,batch_x[int(batch_x.shape[0] / 2):],batch_y[int(batch_x.shape[0] / 2):])
@@ -169,11 +171,19 @@ def train(opt, model, optim, lr_scheduler):
                 val_acc.append(acc.item())
 
                 # Todo: Get Test Accuracy
+                model.eval()
                 loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
                 print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
+                time.sleep(0.01)
+
+                # Todo: Save results
+                test_loss.append(loss.item())
+                test_acc.append(acc.item())
+
             print('=== Epoch: {}  Finished ==='.format(epoch))
+
+            print('Leaning Rate Update ==='.format(epoch))
             lr_scheduler.step()
-            print('=== Leaning Rate Update ==='.format(epoch))
 
             avg_loss = np.mean(val_loss[-opt.iterations:])
             avg_acc = np.mean(val_acc[-opt.iterations:])
@@ -181,13 +191,16 @@ def train(opt, model, optim, lr_scheduler):
                 best_acc)
             print('Avg Val Loss: {}, Avg Val Acc: {}{}'.format(
                 avg_loss, avg_acc, postfix))
-            print('Test Loss: {}, Test Acc: {}{}'.format(
-                loss, acc))
 
             if avg_acc >= best_acc:
                 torch.save(model.state_dict(), best_model_path)
                 best_acc = avg_acc
                 best_state = model.state_dict()
+                model.eval()
+                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
+                print('Test with Best Model')
+                print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
+                time.sleep(0.01)
 
         torch.save(model.state_dict(), last_model_path)
 
@@ -279,16 +292,16 @@ def main():
                 lr_scheduler=lr_scheduler)
 
     best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
-    print('Testing with last model..')
-    test(opt=options,
-         test_dataloader=test_dataloader,
-         model=model)
-
-    model.load_state_dict(best_state)
-    print('Testing with best model..')
-    test(opt=options,
-         test_dataloader=test_dataloader,
-         model=model)
+    # print('Testing with last model..')
+    # test(opt=options,
+    #      test_dataloader=test_dataloader,
+    #      model=model)
+    #
+    # model.load_state_dict(best_state)
+    # print('Testing with best model..')
+    # test(opt=options,
+    #      test_dataloader=test_dataloader,
+    #      model=model)
 
     # optim = init_optim(options, model)
     # lr_scheduler = init_lr_scheduler(options, optim)
