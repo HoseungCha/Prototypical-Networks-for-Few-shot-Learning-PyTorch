@@ -93,7 +93,6 @@ def init_lr_scheduler(opt, optim):
                                            gamma=opt.lr_scheduler_gamma,
                                            step_size=opt.lr_scheduler_step)
 
-
 def save_list_to_file(path, thelist):
     with open(path, 'w') as f:
         for item in thelist:
@@ -134,6 +133,12 @@ def train(opt, model, optim, lr_scheduler):
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
 
+        # Cref 계산
+        cov = covariance.covariances(
+            np.swapaxes(batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr].cpu().numpy(),1, 2)
+            , estimator='cov')
+        Cref = mean.mean_riemann(cov)
+
         for epoch in range(opt.epochs):
             print('=== Epoch: {} ==='.format(epoch))
             time.sleep(0.01)
@@ -149,7 +154,7 @@ def train(opt, model, optim, lr_scheduler):
 
                 # Todo: feature extraction and compute Loss and accuacy
                 loss, acc = featExt_and_compLossAcc\
-                    (opt, model,batch_x[0:int(batch_x.shape[0]/2)],batch_y[0:int(batch_x.shape[0]/2)])
+                    (opt, model, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)],Cref)
                 print('Train Loss: {}, Train Acc: {}'.format(loss, acc))
 
                 # Todo: Prepare gradients, Update Parameters, and Evaluation
@@ -163,7 +168,7 @@ def train(opt, model, optim, lr_scheduler):
                 model.eval()
                 # Todo: feature extraction and compute Loss and Accuracy in Test dataset
                 loss, acc = featExt_and_compLossAcc\
-                    (opt, model,batch_x[int(batch_x.shape[0] / 2):],batch_y[int(batch_x.shape[0] / 2):])
+                    (opt, model,batch_x[int(batch_x.shape[0] / 2):],batch_y[int(batch_x.shape[0] / 2):],Cref)
                 print('Val Loss: {}, Val Acc: {}'.format(loss, acc))
 
                 # Todo: Save results
@@ -172,7 +177,7 @@ def train(opt, model, optim, lr_scheduler):
 
                 # Todo: Get Test Accuracy
                 model.eval()
-                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
+                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test, Cref)
                 print('Test Loss: {}, Test Acc: {}\n'.format(loss, acc))
                 time.sleep(0.01)
 
@@ -198,7 +203,7 @@ def train(opt, model, optim, lr_scheduler):
                 best_state = model.state_dict()
                 model.eval()
                 model.load_state_dict(best_state)
-                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
+                loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test, Cref)
                 print('Test Loss: {}, Test Acc: {}{}\n'.format(loss, acc, postfix))
                 time.sleep(0.01)
 
@@ -251,12 +256,12 @@ def eval(opt):
          test_dataloader=test_dataloader,
          model=model)
 
-def featExt_and_compLossAcc(opt, model, x_train, y_train):
+def featExt_and_compLossAcc(opt, model, x_train, y_train, Cref):
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
     # Todo: Riemannian Feature Extraction
     cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
-    Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+    # Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
     x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
     # Todo: Forward and Caculate Loss
     x, y = x_feat_train.to(device), y_train.to(device)
