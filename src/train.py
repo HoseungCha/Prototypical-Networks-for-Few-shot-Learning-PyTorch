@@ -173,14 +173,14 @@ def train(opt, model, optim, lr_scheduler):
                 # Todo: Get Test Accuracy
                 model.eval()
                 loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
-                print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
+                print('Test Loss: {}, Test Acc: {}\n'.format(loss, acc))
                 time.sleep(0.01)
 
                 # Todo: Save results
                 test_loss.append(loss.item())
                 test_acc.append(acc.item())
 
-            print('=== Epoch: {}  Finished ==='.format(epoch))
+            print('Epoch: {}  Finished ==='.format(epoch))
 
             print('Leaning Rate Update ==='.format(epoch))
             lr_scheduler.step()
@@ -197,9 +197,9 @@ def train(opt, model, optim, lr_scheduler):
                 best_acc = avg_acc
                 best_state = model.state_dict()
                 model.eval()
+                model.load_state_dict(best_state)
                 loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
-                print('Test with Best Model')
-                print('Test Loss: {}, Test Acc: {}'.format(loss, acc))
+                print('Test Loss: {}, Test Acc: {}{}\n'.format(loss, acc, postfix))
                 time.sleep(0.01)
 
         torch.save(model.state_dict(), last_model_path)
