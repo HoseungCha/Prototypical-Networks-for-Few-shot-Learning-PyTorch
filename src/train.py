@@ -10,11 +10,11 @@ import pyriemann
 from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
 
 # from prototypical_loss import prototypical_loss as loss_fn
-from fenet_loss import fe_loss as loss_fn
+from emgnet_loss import emg_loss as loss_fn
 
 from EMG_FE_dataset import EMG_dataset
-from protonet import ProtoNet
-from fenet import FeNet
+# from protonet import ProtoNet
+from emgnet import EMGnet
 from parser_util import get_parser
 from utils import core
 from pyriemann.utils import mean
@@ -64,17 +64,13 @@ def init_dataloader(opt, sTest):
     return dataloader
 
 
-def init_protonet(opt):
+def init_emgnet(opt):
     '''
     Initialize the ProtoNet
     '''
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
-    if opt.dataset_type == 'EMG_dataset':
-        model = FeNet().to(device)
-    else:
-        model = ProtoNet().to(device)
 
-    return model
+    return EMGnet().to(device)
 
 
 def init_optim(opt, model):
@@ -108,7 +104,7 @@ def train(opt, model, optim, lr_scheduler):
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
     best_state = True
     nSub = 10
-
+    sTest = int(opt.test_subject)
     # Load EMG dataset
     dataset = EMG_dataset(option=opt)
 
@@ -119,148 +115,148 @@ def train(opt, model, optim, lr_scheduler):
     index['d'] = dataset.d
 
     # for each test subject, the validation scheme was conducted
-    for sTest in range(nSub):
-        print('=== sTest: {} ==='.format(sTest))
+    # for sTest in range(nSub):
+    print('=== sTest: {} ==='.format(sTest))
 
-        # Performance parameters initialization
-        train_loss = []
-        train_acc = []
-        val_loss = []
-        val_acc = []
-        test_loss = []
-        test_acc = []
-        bestTestAcc = []
-        bestTestLoss = []
-        best_acc = 0
+    # Performance parameters initialization
+    train_loss = []
+    train_acc = []
+    val_loss = []
+    val_acc = []
+    test_loss = []
+    test_acc = []
+    bestTestAcc = []
+    bestTestLoss = []
+    best_acc = 0
 
-        # test dataset loader and prepare Riemannian Feature
-        testDataloader = torch.utils.data.DataLoader \
-            (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
-        test_iter = iter(testDataloader)
-        batch = next(test_iter)
-        batch_x_test, batch_y_test = batch
+    # test dataset loader and prepare Riemannian Feature
+    testDataloader = torch.utils.data.DataLoader \
+        (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
+    test_iter = iter(testDataloader)
+    batch = next(test_iter)
+    batch_x_test, batch_y_test = batch
 
-        test_x_support, test_y_support = reimannian_feat_ext(opt,
-                                   batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
-                                   batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
-        test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
-        del batch_x_test, batch_y_test, batch, test_iter, testDataloader
-        torch.cuda.empty_cache()
+    test_x_support, test_y_support = reimannian_feat_ext(opt,
+                               batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
+                               batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
+    test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
+    del batch_x_test, batch_y_test, batch, test_iter, testDataloader
+    torch.cuda.empty_cache()
 
-        # do epoch; for each epoch, the best model from validation data is going to be determined for the test data
-        for epoch in range(opt.epochs):
-            # set model name to save
-            best_model_path = os.path.join(opt.experiment_root, 'best_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
+    # do epoch; for each epoch, the best model from validation data is going to be determined for the test data
+    for epoch in range(opt.epochs):
+        # set model name to save
+        best_model_path = os.path.join(opt.experiment_root, 'best_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
 
 
-            last_model_path = os.path.join(opt.experiment_root, 'last_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
-            print('=== Epoch: {} ==='.format(epoch))
+        last_model_path = os.path.join(opt.experiment_root, 'last_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
+        print('=== Epoch: {} ==='.format(epoch))
+        time.sleep(0.01)
+
+        # Load randomly selected subject Training/Validation Dataset except test subject
+        trainValDataloader = torch.utils.data.DataLoader \
+            (dataset, batch_sampler = EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
+        tr_iter = iter(trainValDataloader)
+        # do iteration
+        for batch in tqdm(tr_iter):
+            model.train()
+            print('\n')
+            optim.zero_grad()
+            batch_x, batch_y = batch
+
+            # feature extraction
+            x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
+            model_output = model(torch.unsqueeze(x,1))
+
+            # compute Loss and accuracies; please note that test_x_support data was included as query data
+            loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+                                target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+            print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
+
+            # Compute gradients and update model parameters
+            loss.backward()
+            optim.step()
+
+            # Save results
+            train_loss.append(loss.item())
+            train_acc.append(acc.item())
+
+            # Validation Dataset Evaluation
+            model.eval()
+            # validation features extraction
+            x, y = reimannian_feat_ext(opt,
+                                       batch_x[int(batch_x.shape[0] / 2):],
+                                       batch_y[int(batch_x.shape[0] / 2):])
+
+            # predict the validation data with test_x_support to find out the best model for the test subject
+            model_output = model(torch.unsqueeze(x, 1))
+            loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+                                target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+            print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
+
+            # Save results
+            val_loss.append(loss.item())
+            val_acc.append(acc.item())
+
+            # fixme: CHECK MEMORY OKAY
+            # continue
+
+            # Predict the Test subject data
+            model.eval()
+            model_output = model(torch.unsqueeze(test_x, 1))
+            loss, acc = loss_fn(model_output, target=test_y,
+                                n_support=opt.num_support_tr)
+            print('Test Loss: {}, Test Acc: {}\n'.format(loss.item(), acc.item()))
             time.sleep(0.01)
 
-            # Load randomly selected subject Training/Validation Dataset except test subject
-            trainValDataloader = torch.utils.data.DataLoader \
-                (dataset, batch_sampler = EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
-            tr_iter = iter(trainValDataloader)
-            # do iteration
-            for batch in tqdm(tr_iter):
-                model.train()
-                print('\n')
-                optim.zero_grad()
-                batch_x, batch_y = batch
+            # Save results
+            test_loss.append(loss.item())
+            test_acc.append(acc.item())
 
-                # feature extraction
-                x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
-                model_output = model(torch.unsqueeze(x,1))
-
-                # compute Loss and accuracies; please note that test_x_support data was included as query data
-                loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
-                                    target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
-                print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
-
-                # Compute gradients and update model parameters
-                loss.backward()
-                optim.step()
-
-                # Save results
-                train_loss.append(loss.item())
-                train_acc.append(acc.item())
-
-                # Validation Dataset Evaluation
-                model.eval()
-                # validation features extraction
-                x, y = reimannian_feat_ext(opt,
-                                           batch_x[int(batch_x.shape[0] / 2):],
-                                           batch_y[int(batch_x.shape[0] / 2):])
-
-                # predict the validation data with test_x_support to find out the best model for the test subject
-                model_output = model(torch.unsqueeze(x, 1))
-                loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
-                                    target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
-                print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
-
-                # Save results
-                val_loss.append(loss.item())
-                val_acc.append(acc.item())
-
-                # fixme: CHECK MEMORY OKAY
-                # continue
-
-                # Predict the Test subject data
-                model.eval()
-                model_output = model(torch.unsqueeze(test_x, 1))
-                loss, acc = loss_fn(model_output, target=test_y,
-                                    n_support=opt.num_support_tr)
-                print('Test Loss: {}, Test Acc: {}\n'.format(loss.item(), acc.item()))
-                time.sleep(0.01)
-
-                # Save results
-                test_loss.append(loss.item())
-                test_acc.append(acc.item())
-
-            print('Epoch: {}  Finished ==='.format(epoch))
+        print('Epoch: {}  Finished ==='.format(epoch))
 
 
-            print('Leaning Rate Update ==='.format(epoch))
-            lr_scheduler.step() # for every epoch, learning rate is decreased by the value of gamma
+        print('Leaning Rate Update ==='.format(epoch))
+        lr_scheduler.step() # for every epoch, learning rate is decreased by the value of gamma
 
-            # average loss and accuracy was computed for this epoch ( average along the iterations)
-            avg_loss = np.mean(val_loss[-opt.iterations:])
-            avg_acc = np.mean(val_acc[-opt.iterations:])
+        # average loss and accuracy was computed for this epoch ( average along the iterations)
+        avg_loss = np.mean(val_loss[-opt.iterations:])
+        avg_acc = np.mean(val_acc[-opt.iterations:])
 
-            # if the validation performance is better than the previous one, update the best accuracy and save the model
-            postfix = ' (Best with Test Acc: {})'.format(acc.item()) if avg_acc >= best_acc else '(Best Val Acc: {} with Test Acc: {})'.format(
-                best_acc, bestTestAcc[-1])
-            print('Avg Val Loss: {}, Avg Val Acc: {}\n{}'.format(
-                avg_loss, avg_acc, postfix))
+        # if the validation performance is better than the previous one, update the best accuracy and save the model
+        postfix = ' (Best with Test Acc: {})'.format(acc.item()) if avg_acc >= best_acc else '(Best Val Acc: {} with Test Acc: {})'.format(
+            best_acc, bestTestAcc[-1])
+        print('Avg Val Loss: {}, Avg Val Acc: {}\n{}'.format(
+            avg_loss, avg_acc, postfix))
 
-            if avg_acc >= best_acc:
-                torch.save(model.state_dict(), best_model_path)
-                best_acc = avg_acc
-                best_state = model.state_dict()
-                # model.eval()
-                # model.load_state_dict(best_state)
-                # model_output = model(torch.unsqueeze(test_x, 1))
-                # loss, acc = loss_fn(model_output, target=test_y,
-                #                     n_support=opt.num_support_tr)
-                bestTestLoss.append(loss.item())
-                bestTestAcc.append(acc.item())
-                # # loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
-                # print('bestTestLoss: {}, bestTestAcc: {}{}\n'.format(loss, acc, postfix))
-                # time.sleep(0.01)
-                # del best_state
-                # torch.cuda.empty_cache()
+        if avg_acc >= best_acc:
+            torch.save(model.state_dict(), best_model_path)
+            best_acc = avg_acc
+            best_state = model.state_dict()
+            # model.eval()
+            # model.load_state_dict(best_state)
+            # model_output = model(torch.unsqueeze(test_x, 1))
+            # loss, acc = loss_fn(model_output, target=test_y,
+            #                     n_support=opt.num_support_tr)
+            bestTestLoss.append(loss.item())
+            bestTestAcc.append(acc.item())
+            # # loss, acc = featExt_and_compLossAcc(opt, model, batch_x_test, batch_y_test)
+            # print('bestTestLoss: {}, bestTestAcc: {}{}\n'.format(loss, acc, postfix))
+            # time.sleep(0.01)
+            # del best_state
+            # torch.cuda.empty_cache()
 
-            del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter
-            torch.cuda.empty_cache()
-            if epoch == 3:
-                a=1
+        del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter
+        torch.cuda.empty_cache()
+        if epoch == 3:
+            a=1
 
-        torch.save(model.state_dict(), last_model_path)
+    torch.save(model.state_dict(), last_model_path)
 
-        for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc',
-                     'test_loss', 'test_acc', 'bestTestLoss', 'bestTestAcc']:
-            save_list_to_file(os.path.join(opt.experiment_root,
-                                           name + '_sTest_{}.txt'.format(sTest)), locals()[name])
+    for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc',
+                 'test_loss', 'test_acc', 'bestTestLoss', 'bestTestAcc']:
+        save_list_to_file(os.path.join(opt.experiment_root,
+                                       name + '_sTest_{}.txt'.format(sTest)), locals()[name])
 
 
 
@@ -297,7 +293,7 @@ def eval(opt):
 
     init_seed(options)
     test_dataloader = init_dataset(options)[-1]
-    model = init_protonet(options)
+    model = init_fenet(options)
     model_path = os.path.join(opt.experiment_root, 'best_model.pth')
     model.load_state_dict(torch.load(model_path))
 
@@ -340,7 +336,7 @@ def main():
     # tr_dataloader = init_dataloader(options, 'train')
     # test_dataloader = init_dataloader(options, 'test')
 
-    model = init_protonet(options)
+    model = init_emgnet(options)
     optim = init_optim(options, model)
     lr_scheduler = init_lr_scheduler(options, optim)
     res = train(opt=options,
