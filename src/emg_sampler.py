@@ -4,7 +4,7 @@ import torch
 from utils import core
 import itertools
 
-class EMG_FE_Classify_Sampler(object):
+class EMG_sampler(object):
     '''
     PrototypicalBatchSampler: yield a batch of indexes at each iteration.
     Indexes are calculated by keeping in account 'classes_per_it' and 'num_samples',
@@ -30,7 +30,7 @@ class EMG_FE_Classify_Sampler(object):
         - num_samples: number of samples for each iteration for each class (support + query)
         - iterations: number of iterations (episodes) per epoch
         '''
-        super(EMG_FE_Classify_Sampler, self).__init__()
+        super(EMG_sampler, self).__init__()
         # Todo: Possible query and support indexes
         # Todo: Confirm test subject
         self.index = index

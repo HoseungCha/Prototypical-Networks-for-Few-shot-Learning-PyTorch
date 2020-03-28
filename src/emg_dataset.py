@@ -51,6 +51,8 @@ class EMG_dataset(data.Dataset):
         device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
 
         EMG_tensor_path = os.path.join(root,'data','EMG_tensor.pth')
+        EMG_tensor_path = os.path.abspath(os.path.join(root, 'data', 'EMG_tensor.pth'))
+        EMG_tensor_path = "{}".format(EMG_tensor_path)
         if os.path.isfile(EMG_tensor_path) and not os.path.getsize(EMG_tensor_path)/(1024*1024) < 279: # datasetan mb
             start_time = time.time()
             dataset = torch.load(EMG_tensor_path)
@@ -64,7 +66,7 @@ class EMG_dataset(data.Dataset):
                                                      "Sub-%02d" % (s),
                                                      "FE-%02d" % (t),
                                                      "%04d.mat" %  (k * self.nWin + l))
-                            dataset['x'].append(torch.from_numpy(io.loadmat(temp_path)['segment']).float().to(device))
+                            dataset['x'].append(torch.from_numpy(io.loadmat(os.path.abspath(temp_path))['segment']).float().to(device))
                             dataset['s'].append(s)
                             dataset['t'].append(t)
                             if k < 5:

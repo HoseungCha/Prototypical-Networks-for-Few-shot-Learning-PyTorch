@@ -7,13 +7,9 @@ import torch
 import os
 import pyriemann
 
-from emg_FE_classify_sampler import EMG_FE_Classify_Sampler
-
-# from prototypical_loss import prototypical_loss as loss_fn
+from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
-
-from EMG_FE_dataset import EMG_dataset
-# from protonet import ProtoNet
+from emg_dataset import EMG_dataset
 from emgnet import EMGnet
 from parser_util import get_parser
 from utils import core
@@ -131,7 +127,7 @@ def train(opt, model, optim, lr_scheduler):
 
     # test dataset loader and prepare Riemannian Feature
     testDataloader = torch.utils.data.DataLoader \
-        (dataset, batch_sampler=EMG_FE_Classify_Sampler(option=opt, index=index, sExtract=sTest))
+        (dataset, batch_sampler=EMG_sampler(option=opt, index=index, sExtract=sTest))
     test_iter = iter(testDataloader)
     batch = next(test_iter)
     batch_x_test, batch_y_test = batch
@@ -155,7 +151,7 @@ def train(opt, model, optim, lr_scheduler):
 
         # Load randomly selected subject Training/Validation Dataset except test subject
         trainValDataloader = torch.utils.data.DataLoader \
-            (dataset, batch_sampler = EMG_FE_Classify_Sampler(option=opt, index=index, sExclude=sTest))
+            (dataset, batch_sampler = EMG_sampler(option=opt, index=index, sExclude=sTest))
         tr_iter = iter(trainValDataloader)
         # do iteration
         for batch in tqdm(tr_iter):

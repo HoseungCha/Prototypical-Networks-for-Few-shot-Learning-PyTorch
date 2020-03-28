@@ -8,8 +8,7 @@ def get_parser():
     parser.add_argument('-root', '--dataset_root',
                         type=str,
                         help='path to dataset',
-                        default='..' + os.sep + 'dataset'
-                        #default='..' + os.sep + 'dataset_EMG'
+                        default='..' + os.sep + 'dataset_EMG'
                         )
 
     parser.add_argument('-exp', '--experiment_root',
