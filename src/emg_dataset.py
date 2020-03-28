@@ -49,10 +49,10 @@ class EMG_dataset(data.Dataset):
         dataset['d'] = []
 
         device = 'cuda:0' if torch.cuda.is_available() and option.cuda else 'cpu'
-
-        EMG_tensor_path = os.path.join(root,'data','EMG_tensor.pth')
+        # EMG_tensor_path = "D:\OneDrive - 한양대학교\Analysis\Prototypical-Networks-for-Few-shot-Learning-PyTorch\dataset_EMG\data\EMG_tensor.pth"
+        # EMG_tensor_path = os.path.join(root,'data','EMG_tensor.pth')
         EMG_tensor_path = os.path.abspath(os.path.join(root, 'data', 'EMG_tensor.pth'))
-        EMG_tensor_path = "{}".format(EMG_tensor_path)
+
         if os.path.isfile(EMG_tensor_path) and not os.path.getsize(EMG_tensor_path)/(1024*1024) < 279: # datasetan mb
             start_time = time.time()
             dataset = torch.load(EMG_tensor_path)
