@@ -3,6 +3,8 @@ dataset/
 .idea/
 .idea/workspace.xml
 data/
+output/
+output\
 dataset_EMG/
 
 # Byte-compiled / optimized / DLL files
