@@ -70,15 +70,15 @@ class EMG_dataset(data.Dataset):
                             dataset['s'].append(s)
                             dataset['t'].append(t)
                             if k < 5:
-                                d = 1
+                                d = 0
                             elif k >= 5 and k < 10:
-                                d = 2
+                                d = 1
                             elif k >= 10 and k < 15:
-                                d = 3
+                                d = 2
                             elif k >= 15 and k < 20:
-                                d = 4
+                                d = 3
                             elif k>= 20:
-                                d = 5
+                                d = 4
                             dataset['d'].append(d)
 
             torch.save(dataset, EMG_tensor_path)
@@ -89,6 +89,7 @@ class EMG_dataset(data.Dataset):
 
     def __getitem__(self, idx):
         x = self.x[idx]
+        # print(idx)
         if self.transform:
             x = self.transform(x)
         return x, self.t[idx]

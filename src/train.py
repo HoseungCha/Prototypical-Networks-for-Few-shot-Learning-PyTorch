@@ -128,7 +128,7 @@ def train(opt, model, optim, lr_scheduler):
 
         # test dataset loader and prepare Riemannian Feature
         testDataloader = torch.utils.data.DataLoader \
-            (dataset, batch_sampler=EMG_sampler(option=opt, index=index, sExtract=sTest))
+            (dataset, batch_sampler=EMG_sampler(option=opt, index=index, sExtract=sTest), shuffle=False)
         test_iter = iter(testDataloader)
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
@@ -166,7 +166,7 @@ def train(opt, model, optim, lr_scheduler):
                 model_output = model(torch.unsqueeze(x,1))
 
                 # compute Loss and accuracies; please note that test_x_support data was included as query data
-                loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
                                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
                 print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
@@ -187,7 +187,7 @@ def train(opt, model, optim, lr_scheduler):
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
                 model_output = model(torch.unsqueeze(x, 1))
-                loss, acc = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
                                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
                 print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
@@ -201,8 +201,9 @@ def train(opt, model, optim, lr_scheduler):
                 # Predict the Test subject data
                 model.eval()
                 model_output = model(torch.unsqueeze(test_x, 1))
-                loss, acc = loss_fn(model_output, target=test_y,
+                loss, acc, y_hat = loss_fn(model_output, target=test_y,
                                     n_support=opt.num_support_tr)
+
                 print('Test Loss: {}, Test Acc: {}\n'.format(loss.item(), acc.item()))
                 time.sleep(0.01)
 
@@ -229,6 +230,7 @@ def train(opt, model, optim, lr_scheduler):
             if avg_acc >= best_acc:
                 torch.save(model.state_dict(), best_model_path)
                 best_acc = avg_acc
+                best_y_hat = list(itertools.chain.from_iterable(y_hat.tolist()))
                 best_state = model.state_dict()
                 # model.eval()
                 # model.load_state_dict(best_state)
@@ -246,11 +248,10 @@ def train(opt, model, optim, lr_scheduler):
             del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter
             torch.cuda.empty_cache()
 
-
         torch.save(model.state_dict(), last_model_path)
 
         for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc',
-                     'test_loss', 'test_acc', 'bestTestLoss', 'bestTestAcc']:
+                     'test_loss', 'test_acc', 'bestTestLoss', 'bestTestAcc','best_y_hat']:
             save_list_to_file(os.path.join(opt.experiment_root,
                                            name + '_sTest_{}.txt'.format(sTest)), locals()[name])
 
@@ -340,7 +341,7 @@ def main():
                 optim=optim,
                 lr_scheduler=lr_scheduler)
 
-    best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
+    # best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
     # print('Testing with last model..')
     # test(opt=options,
     #      test_dataloader=test_dataloader,

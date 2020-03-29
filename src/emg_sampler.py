@@ -49,7 +49,7 @@ class EMG_sampler(object):
         sExclude = self.sExclude
         index = self.index
 
-        if self.sExtract is None:
+        if self.sExtract is None and self.sExclude is not None:
             for it in range(self.iterations):
                 temp = np.random.permutation(core.getIdxExclude_of_inputIndex(range(self.nSub), [sExclude]))[:2]
                 si = temp[0] # training
@@ -60,13 +60,13 @@ class EMG_sampler(object):
                     support = []
                     query = []
                     support.append(get_idx_of_support(self.nFE, index, s, 0, spc))
-                    for d  in range(1, self.nDomain):
+                    for d in range(1, self.nDomain):
                         query.append(get_idx_of_query(self.nFE, index, s, d))
                     batch.append(support)
                     batch.append(query)
-
                 yield list(itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
-        elif self.sExclude is None:
+
+        elif self.sExclude is None and self.sExtract is not None:
             batch = []
             support = []
             query = []
@@ -75,10 +75,8 @@ class EMG_sampler(object):
                 query.append(get_idx_of_query(self.nFE, index, self.sExtract, d))
             batch.append(support)
             batch.append(query)
-
             yield list(
                 itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
-
 
     def __len__(self):
         '''
@@ -106,7 +104,7 @@ def get_idx_of_support(nFE,index, s, dSupport, spc):
     support = []
     for t in range(nFE):
         found = get_idx_from_std(index, s, t, dSupport)
-        support.append((found)[torch.randperm(found.__len__())[:spc]])
+        support.append(found[:spc][torch.randperm(spc)])
     return support
 
 
