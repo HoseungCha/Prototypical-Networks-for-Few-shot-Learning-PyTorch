@@ -11,6 +11,8 @@ from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
 from emg_dataset import EMG_dataset
 from emgnet import EMGnet
+from emgnet import EMGnet_raw
+
 from parser_util import get_parser
 from utils import core
 from pyriemann.utils import mean
@@ -112,10 +114,11 @@ def train(opt):
     index['d'] = dataset.d
 
     # for each test subject, the validation scheme was conducted
-    for sTest in range(nSub):
+    for sTest in range(2, nSub):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
-        model = init_emgnet(opt)
+        # model = init_emgnet(opt)
+        model = EMGnet_raw().to(device)
         optim = init_optim(opt, model)
         lr_scheduler = init_lr_scheduler(opt, optim)
 
@@ -129,6 +132,7 @@ def train(opt):
         bestTestAcc = []
         bestTestLoss = []
         best_acc = 0
+        best_acc = 0
 
         # test dataset loader and prepare Riemannian Feature
         testDataloader = torch.utils.data.DataLoader \
@@ -137,12 +141,14 @@ def train(opt):
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
 
-        test_x_support, test_y_support = reimannian_feat_ext(opt,
-                                   batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
-                                   batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
-        test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
+        # test_x_support, test_y_support = reimannian_feat_ext(opt,
+        #                            batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
+        #                            batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
+        # test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
+        test_x_support, test_y_support = batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr].to(device),\
+                                         batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr].to(device)
         test_x_support, test_y_support = test_x_support.to(device), test_y_support.to(device)
-        test_x, test_y = test_x.to(device), test_y.to(device)
+        test_x, test_y = batch_x_test.to(device), batch_y_test.to(device)
         del batch_x_test, batch_y_test, batch, test_iter, testDataloader
         torch.cuda.empty_cache()
 
@@ -164,14 +170,15 @@ def train(opt):
             for batch in tqdm(tr_iter):
                 model.train()
                 print('\n')
-                batch_x, batch_y = batch
+                x, y = batch
+                x, y = x.to(device), y.to(device)
                 # feature extraction
-                x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
+                # x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
                 # torch.unsqueeze(test_x_support, 1)
                 x = torch.cat((x.to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
                 optim.zero_grad()
-                model_output = model(torch.unsqueeze(x,1), )
+                model_output = model(x.permute(0,2,1))
                 # model()
 
 
@@ -192,15 +199,16 @@ def train(opt):
                 # Validation Dataset Evaluation
                 model.eval()
                 # validation features extraction
-                x, y = reimannian_feat_ext(opt,
-                                           batch_x[int(batch_x.shape[0] / 2):],
-                                           batch_y[int(batch_x.shape[0] / 2):])
-                x = torch.cat((x.to(device), test_x_support), 0)
+                # x, y = reimannian_feat_ext(opt,
+                #                            batch_x[int(batch_x.shape[0] / 2):],
+                #                            batch_y[int(batch_x.shape[0] / 2):])
+                x = torch.cat((x[int(batch[0].shape[0] / 2):].to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
-                model_output = model(torch.unsqueeze(x, 1))
-                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+
+                model_output = model(x.permute(0,2,1))
+                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(x.permute(0,2,1))), 0),
                                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
                 print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
@@ -213,7 +221,7 @@ def train(opt):
 
                 # Predict the Test subject data
                 model.eval()
-                model_output = model(torch.unsqueeze(test_x, 1))
+                model_output = model(test_x.permute(0,2,1))
                 loss, acc, y_hat = loss_fn(model_output, target=test_y,
                                     n_support=opt.num_support_tr)
 
@@ -263,7 +271,7 @@ def train(opt):
             save_list_to_file(os.path.join(opt.experiment_root,
                                            name + '_sTest_{}.txt'.format(sTest)), locals()[name])
         # delete memory
-        del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter, model, optim, lr_scheduler
+        del x, y, batch, trainValDataloader, model_output, loss, acc, tr_iter, model, optim, lr_scheduler
         torch.cuda.empty_cache()
 
 
