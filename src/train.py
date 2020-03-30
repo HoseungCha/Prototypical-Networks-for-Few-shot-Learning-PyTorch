@@ -92,7 +92,7 @@ def save_list_to_file(path, thelist):
             f.write("%s\n" % item)
 
 
-def train(opt, model, optim, lr_scheduler):
+def train(opt):
     '''
     Train the model with the prototypical learning algorithm
     '''
@@ -114,6 +114,10 @@ def train(opt, model, optim, lr_scheduler):
     # for each test subject, the validation scheme was conducted
     for sTest in range(nSub):
         print('=== sTest: {} ==='.format(sTest))
+        # 모델 초기화
+        model = init_emgnet(opt)
+        optim = init_optim(opt, model)
+        lr_scheduler = init_lr_scheduler(opt, optim)
 
         # Performance parameters initialization
         train_loss = []
@@ -244,16 +248,18 @@ def train(opt, model, optim, lr_scheduler):
                 # time.sleep(0.01)
                 # del best_state
                 # torch.cuda.empty_cache()
-
-            del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter
-            torch.cuda.empty_cache()
-
         torch.save(model.state_dict(), last_model_path)
-
         for name in ['train_loss', 'train_acc', 'val_loss', 'val_acc',
                      'test_loss', 'test_acc', 'bestTestLoss', 'bestTestAcc','best_y_hat']:
             save_list_to_file(os.path.join(opt.experiment_root,
                                            name + '_sTest_{}.txt'.format(sTest)), locals()[name])
+        # delete memory
+        del x, y, batch, batch_x, batch_y, trainValDataloader, model_output, loss, acc, tr_iter, model, optim, lr_scheduler
+        torch.cuda.empty_cache()
+
+
+
+
 
 
 
@@ -333,13 +339,8 @@ def main():
     # tr_dataloader = init_dataloader(options, 'train')
     # test_dataloader = init_dataloader(options, 'test')
 
-    model = init_emgnet(options)
-    optim = init_optim(options, model)
-    lr_scheduler = init_lr_scheduler(options, optim)
-    res = train(opt=options,
-                model=model,
-                optim=optim,
-                lr_scheduler=lr_scheduler)
+
+    res = train(opt=options)
 
     # best_state, best_acc, train_loss, train_acc, val_loss, val_acc = res
     # print('Testing with last model..')
