@@ -141,6 +141,8 @@ def train(opt):
                                    batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
                                    batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
         test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
+        test_x_support, test_y_support = test_x_support.to(device), test_y_support.to(device)
+        test_x, test_y = test_x.to(device), test_y.to(device)
         del batch_x_test, batch_y_test, batch, test_iter, testDataloader
         torch.cuda.empty_cache()
 
@@ -162,16 +164,21 @@ def train(opt):
             for batch in tqdm(tr_iter):
                 model.train()
                 print('\n')
-                optim.zero_grad()
                 batch_x, batch_y = batch
-
                 # feature extraction
                 x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
-                model_output = model(torch.unsqueeze(x,1))
+                # torch.unsqueeze(test_x_support, 1)
+                x = torch.cat((x.to(device), test_x_support), 0)
+                # x, y = x.to(device), y.to(device)
+                optim.zero_grad()
+                model_output = model(torch.unsqueeze(x,1), )
+                # model()
+
 
                 # compute Loss and accuracies; please note that test_x_support data was included as query data
-                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
-                                    target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                # loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
+                #                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                loss, acc, y_hat = loss_fn(model_output,target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
                 print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
                 # Compute gradients and update model parameters
@@ -188,6 +195,8 @@ def train(opt):
                 x, y = reimannian_feat_ext(opt,
                                            batch_x[int(batch_x.shape[0] / 2):],
                                            batch_y[int(batch_x.shape[0] / 2):])
+                x = torch.cat((x.to(device), test_x_support), 0)
+                # x, y = x.to(device), y.to(device)
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
                 model_output = model(torch.unsqueeze(x, 1))
