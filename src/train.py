@@ -168,8 +168,8 @@ def train(opt):
                 # feature extraction
                 x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
                 # torch.unsqueeze(test_x_support, 1)
-                x = torch.cat((x.to(device), test_x_support), 0)
-                # x, y = x.to(device), y.to(device)
+                # x = torch.cat((x.to(device), test_x_support), 0)
+                x, y = x.to(device), y.to(device)
                 optim.zero_grad()
                 model_output = model(torch.unsqueeze(x,1), )
                 # model()
@@ -178,7 +178,7 @@ def train(opt):
                 # compute Loss and accuracies; please note that test_x_support data was included as query data
                 # loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
                 #                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
-                loss, acc, y_hat = loss_fn(model_output,target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                loss, acc, y_hat = loss_fn(model_output, y, n_support=opt.num_support_tr)
                 print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
                 # Compute gradients and update model parameters
@@ -195,13 +195,13 @@ def train(opt):
                 x, y = reimannian_feat_ext(opt,
                                            batch_x[int(batch_x.shape[0] / 2):],
                                            batch_y[int(batch_x.shape[0] / 2):])
-                x = torch.cat((x.to(device), test_x_support), 0)
-                # x, y = x.to(device), y.to(device)
+                # x = torch.cat((x.to(device), test_x_support), 0)
+                x, y = x.to(device), y.to(device)
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
                 model_output = model(torch.unsqueeze(x, 1))
                 loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
-                                    target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                                    target = y, n_support=opt.num_support_tr)
                 print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
                 # Save results
