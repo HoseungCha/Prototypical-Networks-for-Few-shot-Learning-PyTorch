@@ -332,7 +332,7 @@ def reimannian_feat_ext(opt, x_train, y_train):
 
 
     Cref = pyriemann_torch.mean_riemann(covMat[:opt.classes_per_it_tr * opt.num_support_tr])
-    x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+    x_feat_train = pyriemann_torch.tangent_space(covMat, Cref)
     # Todo: Forward and Caculate Loss
     x, y = x_feat_train.to(device), y_train.to(device)
     # model_output = model(torch.unsqueeze(x,1))

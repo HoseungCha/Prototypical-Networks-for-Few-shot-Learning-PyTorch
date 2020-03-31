@@ -1,5 +1,8 @@
 import torch
 import numpy
+import scipy
+from numpy.core.numerictypes import typecodes
+
 
 def mean_riemann(covmats, tol=10e-9, maxiter=50, init=None,
                  sample_weight=None):
@@ -20,7 +23,7 @@ def mean_riemann(covmats, tol=10e-9, maxiter=50, init=None,
 
     """
     # init
-    # sample_weight = _get_sample_weight(sample_weight, covmats)
+    sample_weight = _get_sample_weight(sample_weight, covmats)
     Nt, Ne, Ne = covmats.shape
     if init is None:
         C = torch.mean(covmats, axis=0)
@@ -38,12 +41,12 @@ def mean_riemann(covmats, tol=10e-9, maxiter=50, init=None,
         J = torch.zeros((Ne, Ne))
 
         for index in range(Nt):
-            tmp = torch.dot(torch.dot(Cm12, covmats[index, :, :]), Cm12)
+            tmp = torch.mm(torch.mm(Cm12, covmats[index, :, :]), Cm12)
             J += sample_weight[index] * logm(tmp)
 
-        crit = torch.linalg.norm(J, ord='fro')
+        crit = numpy.linalg.norm(J, ord='fro')
         h = nu * crit
-        C = torch.dot(torch.dot(C12, expm(nu * J)), C12)
+        C = torch.mm(torch.mm(C12, expm(nu * J)), C12)
         if h < tau:
             nu = 0.95 * nu
             tau = h
@@ -54,11 +57,12 @@ def mean_riemann(covmats, tol=10e-9, maxiter=50, init=None,
 
 def _matrix_operator(Ci, operator):
     """matrix equivalent of an operator."""
-    if Ci.dtype.char in typecodes['AllFloat'] and not torch.isfinite(Ci).all():
+    if Ci.numpy().dtype.char in typecodes['AllFloat'] and not torch.isfinite(Ci).all():
         raise ValueError("Covariance matrices must be positive definite. Add regularization to avoid this error.")
     eigvals, eigvects = scipy.linalg.eigh(Ci, check_finite=False)
-    eigvals = torch.diag(operator(eigvals))
-    Out = torch.dot(torch.dot(eigvects, eigvals), eigvects.T)
+    eigvects = torch.FloatTensor(eigvects)
+    eigvals = torch.diag(operator(torch.FloatTensor(eigvals)))
+    Out = torch.mm(torch.mm(eigvects, eigvals), eigvects.T)
     return Out
 
 
@@ -201,7 +205,7 @@ def computeCOV(X):
     v1 = torch.sum(w)
     v2 = torch.sum(w * a)
     m -= torch.sum(m * w, axis=None, keepdims=True) / v1
-    cov = torch.dot(m * w, m.T) * v1 / (v1 ** 2 - ddof * v2)
+    cov = torch.mm(m * w, m.T) * v1 / (v1 ** 2 - ddof * v2)
 
 def covariances(X):
     """Estimation of covariance matrix."""
@@ -210,3 +214,78 @@ def covariances(X):
     for i in range(Nt):
         covmats[i, :, :] = cov(X[i, :, :])
     return covmats
+
+def _get_sample_weight(sample_weight, data):
+    """Get the sample weights.
+
+    If none provided, weights init to 1. otherwise, weights are normalized.
+    """
+    if sample_weight is None:
+        sample_weight = torch.ones(data.shape[0])
+    if len(sample_weight) != data.shape[0]:
+        raise ValueError("len of sample_weight must be equal to len of data.")
+    sample_weight /= torch.sum(sample_weight)
+    return sample_weight
+
+def tangent_space(covmats, Cref):
+    """Project a set of covariance matrices in the tangent space. according to
+    the reference point Cref
+
+    :param covmats: np.ndarray
+        Covariance matrices set, Ntrials X Nchannels X Nchannels
+    :param Cref: np.ndarray
+        The reference covariance matrix
+    :returns: np.ndarray
+        the Tangent space , a matrix of Ntrials X (Nchannels*(Nchannels+1)/2)
+
+    """
+    Nt, Ne, Ne = covmats.shape
+    Cm12 = invsqrtm(Cref)
+    idx = numpy.triu_indices_from(Cref)
+    Nf = int(Ne * (Ne + 1) / 2)
+    T = torch.empty((Nt, Nf))
+    coeffs = (numpy.sqrt(2) * numpy.triu(numpy.ones((Ne, Ne)), 1) +
+              numpy.eye(Ne))[idx]
+    for index in range(Nt):
+        tmp = torch.mm(torch.mm(Cm12, covmats[index, :, :]), Cm12)
+        tmp = logm(tmp)
+        T[index, :] = torch.mul(torch.FloatTensor(coeffs), tmp[idx])
+    return T
+
+
+def untangent_space(T, Cref):
+    """Project a set of Tangent space vectors back to the manifold.
+
+    :param T: np.ndarray
+        the Tangent space , a matrix of Ntrials X (channels * (channels + 1)/2)
+    :param Cref: np.ndarray
+        The reference covariance matrix
+    :returns: np.ndarray
+        A set of Covariance matrix, Ntrials X Nchannels X Nchannels
+
+    """
+    Nt, Nd = T.shape
+    Ne = int((torch.sqrt(1 + 8 * Nd) - 1) / 2)
+    C12 = sqrtm(Cref)
+
+    idx = torch.triu_indices_from(Cref)
+    covmats = torch.empty((Nt, Ne, Ne))
+    covmats[:, idx[0], idx[1]] = T
+    for i in range(Nt):
+        triuc = torch.triu(covmats[i], 1) / torch.sqrt(2)
+        covmats[i] = (torch.diag(torch.diag(covmats[i])) + triuc + triuc.T)
+        covmats[i] = expm(covmats[i])
+        covmats[i] = torch.mm(torch.mm(C12, covmats[i]), C12)
+
+    return covmats
+
+
+def transport(Covs, Cref):
+    """Parallel transport of two set of covariance matrix.
+
+    """
+    C = mean_riemann(Covs)
+    iC = invsqrtm(C)
+    E = sqrtm(torch.mm(torch.mm(iC, Cref), iC))
+    out = torch.array([torch.mm(torch.mm(E, c), E.T) for c in Covs])
+    return out
