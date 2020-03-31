@@ -30,3 +30,21 @@ class EMGnet(nn.Module):
     def forward(self, x):
         x = self.encoder(x)
         return x.view(x.size(0), -1)
+
+class Riemannet(nn.Module):
+    '''
+    Model as described in the reference paper,
+    source: https://github.com/jakesnell/prototypical-networks/blob/f0c48808e496989d01db59f86d4449d7aee9ab0c/protonets/models/few_shot.py#L62-L84
+    '''
+    def __init__(self, x_dim=1, hid_dim=64, z_dim=64):
+        super(EMGnet, self).__init__()
+        self.encoder = nn.Sequential(
+            conv_block(x_dim, hid_dim),
+            conv_block(hid_dim, hid_dim),
+            conv_block(hid_dim, hid_dim),
+            conv_block(hid_dim, z_dim)
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        return x.view(x.size(0), -1)

@@ -17,6 +17,9 @@ from pyriemann.utils import mean
 from pyriemann.utils import covariance
 from pyriemann.utils import tangentspace
 from tqdm import tqdm
+from parser_util import get_parser
+import pyriemann_torch
+
 import itertools
 import time
 
@@ -112,7 +115,7 @@ def train(opt):
     index['d'] = dataset.d
 
     # for each test subject, the validation scheme was conducted
-    for sTest in range(nSub):
+    for sTest in range(2, nSub):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
         model = init_emgnet(opt)
@@ -150,8 +153,6 @@ def train(opt):
         for epoch in range(opt.epochs):
             # set model name to save
             best_model_path = os.path.join(opt.experiment_root, 'best_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
-
-
             last_model_path = os.path.join(opt.experiment_root, 'last_model_sTest_{}_epoch_{}.pth'.format(sTest, epoch))
             print('=== Epoch: {} ==='.format(epoch))
             time.sleep(0.01)
@@ -165,12 +166,19 @@ def train(opt):
                 model.train()
                 print('\n')
                 batch_x, batch_y = batch
+
+                batch_x = batch[0].to(device)
+                batch_y = batch[1].to(device)
+
+                # Monitoring gradients sine Riemannian Feature was extracted
+                optim.zero_grad()
+
                 # feature extraction
                 x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
                 # torch.unsqueeze(test_x_support, 1)
                 x = torch.cat((x.to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
-                optim.zero_grad()
+
                 model_output = model(torch.unsqueeze(x,1), )
                 # model()
 
@@ -319,8 +327,11 @@ def reimannian_feat_ext(opt, x_train, y_train):
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
     # Todo: Riemannian Feature Extraction
-    cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
-    Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+    covMat = pyriemann_torch.covariances(x_train[:])
+    # cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
+
+
+    Cref = pyriemann_torch.mean_riemann(covMat[:opt.classes_per_it_tr * opt.num_support_tr])
     x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
     # Todo: Forward and Caculate Loss
     x, y = x_feat_train.to(device), y_train.to(device)
@@ -328,6 +339,7 @@ def reimannian_feat_ext(opt, x_train, y_train):
     # loss, acc = loss_fn(model_output, target=y,
     #                     n_support=opt.num_support_tr)
     # return loss, acc
+
     return x, y
 
 def main():
