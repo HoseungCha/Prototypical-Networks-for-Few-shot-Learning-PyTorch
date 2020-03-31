@@ -13,9 +13,10 @@ from emg_dataset import EMG_dataset
 from emgnet import EMGnet
 from parser_util import get_parser
 from utils import core
-from pyriemann.utils import mean
-from pyriemann.utils import covariance
-from pyriemann.utils import tangentspace
+# import pyriemann.utils as py_utils
+# from pyriemann.utils import mean
+# from pyriemann.utils import covariance
+# from pyriemann.utils import tangentspace
 from tqdm import tqdm
 import itertools
 import time
@@ -112,7 +113,7 @@ def train(opt):
     index['d'] = dataset.d
 
     # for each test subject, the validation scheme was conducted
-    for sTest in range(nSub):
+    for sTest in range(2, nSub):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
         model = init_emgnet(opt)
@@ -319,9 +320,11 @@ def reimannian_feat_ext(opt, x_train, y_train):
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
     # Todo: Riemannian Feature Extraction
-    cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
-    Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
-    x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
+    # py_utils
+
+    cov = pyriemann.utils.covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='scm')
+    Cref = pyriemann.utils.mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+    x_feat_train = torch.FloatTensor(pyriemann.utils.tangentspace.tangent_space(cov, Cref))
     # Todo: Forward and Caculate Loss
     x, y = x_feat_train.to(device), y_train.to(device)
     # model_output = model(torch.unsqueeze(x,1))
