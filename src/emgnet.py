@@ -18,9 +18,9 @@ def conv_block_2d(in_channels, out_channels):
     '''
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, 3, padding=1),
-        nn.BatchNorm1d(out_channels),
+        nn.BatchNorm2d(out_channels),
         nn.ReLU(),
-        nn.MaxPool1d(2)
+        nn.MaxPool2d(2)
     )
 
 class EMGnet(nn.Module):

@@ -139,18 +139,14 @@ def train(opt):
             (dataset, batch_sampler=EMG_sampler(option=opt, index=index, sExtract=sTest), shuffle=False)
         test_iter = iter(testDataloader)
         batch = next(test_iter)
-        batch_x_test, batch_y_test = batch
-        batch_x_test = torch.FloatTensor(covariance.covariances(batch_x_test.permute(0,2,1).to('cpu').numpy(),estimator='scm'))
+        x_test, y_test = batch
+        x_test = torch.FloatTensor(covariance.covariances(x_test.permute(0,2,1).to('cpu').numpy(),estimator='scm'))
+        x_test, y_test = x_test.to(device), y_test.to(device)
+        # x_test = model(x_test.unsqueeze(1))
+        x_test_support = x_test[:opt.classes_per_it_tr * opt.num_support_tr]
+        y_test_support = y_test[:opt.classes_per_it_tr * opt.num_support_tr]
 
-        # test_x_support, test_y_support = reimannian_feat_ext(opt,
-        #                            batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
-        #                            batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
-        # test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
-        test_x_support, test_y_support = batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr].to(device),\
-                                         batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr].to(device)
-        test_x_support, test_y_support = test_x_support.to(device), test_y_support.to(device)
-        test_x, test_y = batch_x_test.to(device), batch_y_test.to(device)
-        del batch_x_test, batch_y_test, batch, test_iter, testDataloader
+        del batch, test_iter, testDataloader
         torch.cuda.empty_cache()
 
         # do epoch; for each epoch, the best model from validation data is going to be determined for the test data
@@ -171,22 +167,26 @@ def train(opt):
             for batch in tqdm(tr_iter):
                 # batch
                 x, y = batch
+
                 # comopute covariance
                 x = torch.FloatTensor(covariance.covariances(x.permute(0, 2, 1).to('cpu').numpy(), estimator='scm'))
                 x, y = x.to(device), y.to(device)
 
+                # prepare training data
+                print('\n')
+                x_train = x[0:int(x.shape[0]/2)]
+                y_train = y[0:int(x.shape[0]/2)]
+
                 # start to train
                 model.train()
-                print('\n')
-                x_train = torch.cat((x[0:int(x.shape[0]/2)].to(device), test_x_support), 0)
-                y_train = y[0:int(x.shape[0]/2)]
-                # x, y = x.to(device), y.to(device)
                 optim.zero_grad()
+                x_train = model(torch.cat((x_train.unsqueeze(1), x_test_support.unsqueeze(1)),0))
 
-                model_output = model(x_train.unsqueeze(1))
-
-                loss, acc, y_hat = loss_fn(model_output,target=torch.cat((y_train, test_y_support), 0),
+                # loss and accuracy
+                loss, acc, y_hat = loss_fn(x_train,
+                                           target=torch.cat((y_train, y_test_support), 0),
                                            n_support=opt.num_support_tr)
+
                 print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
                 # Compute gradients and update model parameters
@@ -199,32 +199,31 @@ def train(opt):
 
                 # Validation Dataset Evaluation
                 model.eval()
-                # validation features extraction
-                # x, y = reimannian_feat_ext(opt,
-                #                            batch_x[int(batch_x.shape[0] / 2):],
-                #                            batch_y[int(batch_x.shape[0] / 2):])
-                x = torch.cat((x[int(batch[0].shape[0] / 2):].to(device), test_x_support), 0)
-                # x, y = x.to(device), y.to(device)
+                x_val = x[int(batch[0].shape[0] / 2):]
+
+                # prepare training data
+                x_val = x[int(x.shape[0] / 2):]
+                y_val = y[int(x.shape[0] / 2):]
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
+                x_val = model(torch.cat((x_val.unsqueeze(1), x_test_support.unsqueeze(1)), 0))
 
-                model_output = model(x.permute(0,2,1))
-                loss, acc, y_hat = loss_fn(torch.cat((model_output, model(x.permute(0,2,1))), 0),
-                                    target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                # loss and accuracy
+                loss, acc, y_hat = loss_fn(x_val,
+                                           target=torch.cat((y_val, y_test_support), 0),
+                                           n_support=opt.num_support_tr)
+
                 print('Val Loss: {}, Val Acc: {}'.format(loss.item(), acc.item()))
 
                 # Save results
                 val_loss.append(loss.item())
                 val_acc.append(acc.item())
 
-                # fixme: CHECK MEMORY OKAY
-                # continue
-
                 # Predict the Test subject data
                 model.eval()
-                model_output = model(test_x.permute(0,2,1))
-                loss, acc, y_hat = loss_fn(model_output, target=test_y,
-                                    n_support=opt.num_support_tr)
+                loss, acc, y_hat = loss_fn(model(x_test.unsqueeze(1)),
+                                           target=y_test,
+                                           n_support=opt.num_support_tr)
 
                 print('Test Loss: {}, Test Acc: {}\n'.format(loss.item(), acc.item()))
                 time.sleep(0.01)
