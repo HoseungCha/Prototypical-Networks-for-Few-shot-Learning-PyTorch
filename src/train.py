@@ -6,12 +6,11 @@ import numpy as np
 import torch
 import os
 import pyriemann
+import emgnet
 
 from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
 from emg_dataset import EMG_dataset
-from emgnet import EMGnet
-from emgnet import EMGnet_raw
 
 from parser_util import get_parser
 from utils import core
@@ -118,7 +117,8 @@ def train(opt):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
         # model = init_emgnet(opt)
-        model = EMGnet_raw().to(device)
+        model = emgnet.EMGnet_shallow()
+        model = model.to(device)
         optim = init_optim(opt, model)
         lr_scheduler = init_lr_scheduler(opt, optim)
 
@@ -140,6 +140,7 @@ def train(opt):
         test_iter = iter(testDataloader)
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
+        batch_x_test = torch.FloatTensor(covariance.covariances(batch_x_test.permute(0,2,1).to('cpu').numpy(),estimator='scm'))
 
         # test_x_support, test_y_support = reimannian_feat_ext(opt,
         #                            batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
@@ -168,24 +169,24 @@ def train(opt):
             tr_iter = iter(trainValDataloader)
             # do iteration
             for batch in tqdm(tr_iter):
+                # batch
+                x, y = batch
+                # comopute covariance
+                x = torch.FloatTensor(covariance.covariances(x.permute(0, 2, 1).to('cpu').numpy(), estimator='scm'))
+                x, y = x.to(device), y.to(device)
+
+                # start to train
                 model.train()
                 print('\n')
-                x, y = batch
-                x, y = x.to(device), y.to(device)
-                # feature extraction
-                # x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
-                # torch.unsqueeze(test_x_support, 1)
-                x = torch.cat((x.to(device), test_x_support), 0)
+                x_train = torch.cat((x[0:int(x.shape[0]/2)].to(device), test_x_support), 0)
+                y_train = y[0:int(x.shape[0]/2)]
                 # x, y = x.to(device), y.to(device)
                 optim.zero_grad()
-                model_output = model(x.permute(0,2,1))
-                # model()
 
+                model_output = model(x_train.unsqueeze(1))
 
-                # compute Loss and accuracies; please note that test_x_support data was included as query data
-                # loss, acc, y_hat = loss_fn(torch.cat((model_output, model(torch.unsqueeze(test_x_support,1))), 0),
-                #                     target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
-                loss, acc, y_hat = loss_fn(model_output,target=torch.cat((y, test_y_support), 0), n_support=opt.num_support_tr)
+                loss, acc, y_hat = loss_fn(model_output,target=torch.cat((y_train, test_y_support), 0),
+                                           n_support=opt.num_support_tr)
                 print('Train Loss: {}, Train Acc: {}'.format(loss.item(), acc.item()))
 
                 # Compute gradients and update model parameters
