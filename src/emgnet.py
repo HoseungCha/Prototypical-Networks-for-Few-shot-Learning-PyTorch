@@ -1,5 +1,6 @@
 import torch.nn as nn
-
+from spdnet.spd import SPDTransform, SPDTangentSpace, SPDRectified
+from spdnet.optimizer import StiefelMetaOptimizer
 
 def conv_block(in_channels, out_channels):
     '''
@@ -12,6 +13,14 @@ def conv_block(in_channels, out_channels):
         nn.MaxPool1d(2)
     )
 
+def SPD_block(in_channels, out_channels):
+    '''
+    returns a block conv-bn-relu-pool
+    '''
+    return nn.Sequential(
+        SPDTransform(in_channels, out_channels),
+        SPDRectified(),
+    )
 
 class EMGnet(nn.Module):
     '''
@@ -31,18 +40,19 @@ class EMGnet(nn.Module):
         x = self.encoder(x)
         return x.view(x.size(0), -1)
 
-class Riemannet(nn.Module):
+class SPDnet(nn.Module):
     '''
     Model as described in the reference paper,
     source: https://github.com/jakesnell/prototypical-networks/blob/f0c48808e496989d01db59f86d4449d7aee9ab0c/protonets/models/few_shot.py#L62-L84
     '''
     def __init__(self, x_dim=1, hid_dim=64, z_dim=64):
         super(EMGnet, self).__init__()
+
         self.encoder = nn.Sequential(
-            conv_block(x_dim, hid_dim),
-            conv_block(hid_dim, hid_dim),
-            conv_block(hid_dim, hid_dim),
-            conv_block(hid_dim, z_dim)
+            SPD_block(x_dim, hid_dim),
+            SPD_block(x_dim, hid_dim),
+            SPD_block(x_dim, hid_dim),
+            SPDTangentSpace(z_dim),
         )
 
     def forward(self, x):

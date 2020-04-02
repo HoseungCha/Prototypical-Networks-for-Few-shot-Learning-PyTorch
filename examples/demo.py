@@ -22,16 +22,28 @@ class Net(nn.Module):
         self.linear = nn.Linear(1275, 7, bias=True)
         # self.dropout = nn.Dropout(p=0.5)
 
+        self.encoder = nn.Sequential(
+            SPDTransform(400, 200),
+            SPDRectified(),
+            SPDTransform(200, 100),
+            SPDRectified(),
+            SPDTransform(100, 50),
+            SPDRectified(),
+            SPDTangentSpace(50),
+            nn.Linear(1275, 7, bias=True)
+        )
+
     def forward(self, x):
-        x = self.trans1(x)
-        x = self.rect1(x)
-        x = self.trans2(x)
-        x = self.rect2(x)
-        x = self.trans3(x)
-        x = self.rect3(x)
-        x = self.tangent(x)
-        # x = self.dropout(x)
-        x = self.linear(x)
+        # x = self.trans1(x)
+        # x = self.rect1(x)
+        # x = self.trans2(x)
+        # x = self.rect2(x)
+        # x = self.trans3(x)
+        # x = self.rect3(x)
+        # x = self.tangent(x)
+        # # x = self.dropout(x)
+        # x = self.linear(x)
+        x = self.encoder(x)
         return x
 
 transformed_dataset = AfewDataset(train=True)

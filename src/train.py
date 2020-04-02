@@ -6,12 +6,12 @@ import numpy as np
 import torch
 import os
 import pyriemann
-import spdnet
+# import spdnet
 
 from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
 from emg_dataset import EMG_dataset
-from emgnet import EMGnet
+from emgnet import SPDnet
 from parser_util import get_parser
 from utils import core
 from pyriemann.utils import mean
@@ -70,7 +70,7 @@ def init_emgnet(opt):
     '''
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
-    return EMGnet().to(device)
+    return SPDnet().to(device)
 
 
 def init_optim(opt, model):
@@ -119,7 +119,7 @@ def train(opt):
     for sTest in range(2, nSub):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
-        model = init_emgnet(opt)
+        model = SPDnet().to(device)
         optim = init_optim(opt, model)
         lr_scheduler = init_lr_scheduler(opt, optim)
 
