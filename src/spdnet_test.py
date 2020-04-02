@@ -67,7 +67,7 @@ def check_Rectified():
     epsilon = torch.FloatTensor([3.1])
 
     forward = SPDRectifiedFunction.apply(spd, epsilon)
-    backward = SPDRectifiedFunction.backward(CTX([spd, epsilon], [1, False]), grad_mat)[0]
+    backward = SPDRectifiedFunction.backward(CTX([spd, epsilon], [True, False]), grad_mat)[0]
     forward_eq = assertTensorEqual(forward, desired_forward)
     backward_eq = assertTensorEqual(backward, desired_backward)
 
