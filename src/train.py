@@ -6,6 +6,7 @@ import numpy as np
 import torch
 import os
 import pyriemann
+import spdnet
 
 from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
