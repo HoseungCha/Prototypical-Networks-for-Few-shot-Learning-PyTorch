@@ -6,7 +6,7 @@ import numpy as np
 import torch
 import os
 import pyriemann
-import emgnet
+from emgnet import SPDnet
 
 from emg_sampler import EMG_sampler
 from emgnet_loss import emg_loss as loss_fn
@@ -117,7 +117,7 @@ def train(opt):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
         # model = init_emgnet(opt)
-        model = emgnet.EMGnet_shallow()
+        model = SPDnet().to(device)
         model = model.to(device)
         optim = init_optim(opt, model)
         lr_scheduler = init_lr_scheduler(opt, optim)
