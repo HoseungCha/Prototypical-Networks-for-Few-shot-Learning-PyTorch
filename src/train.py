@@ -112,7 +112,7 @@ def train(opt):
     index['d'] = dataset.d
 
     # for each test subject, the validation scheme was conducted
-    for sTest in range(nSub):
+    for sTest in range(2, nSub):
         print('=== sTest: {} ==='.format(sTest))
         # 모델 초기화
         model = init_emgnet(opt)
@@ -171,7 +171,7 @@ def train(opt):
                 x = torch.cat((x.to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
                 optim.zero_grad()
-                model_output = model(torch.unsqueeze(x,1), )
+                model_output = model(torch.unsqueeze(x,1))
                 # model()
 
 
@@ -319,7 +319,7 @@ def reimannian_feat_ext(opt, x_train, y_train):
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
     # Todo: Riemannian Feature Extraction
-    cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='cov')
+    cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='scm')
     Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
     x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
     # Todo: Forward and Caculate Loss

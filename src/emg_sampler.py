@@ -59,9 +59,13 @@ class EMG_sampler(object):
                 for s in [si, sj]:
                     support = []
                     query = []
-                    support.append(get_idx_of_support(self.nFE, index, s, 0, spc))
-                    for d in range(1, self.nDomain):
-                        query.append(get_idx_of_query(self.nFE, index, s, d))
+                    temp = np.random.permutation(list(range(self.nDomain)))
+                    di = temp[0]  # training
+                    dj = temp[1]  # validation
+
+                    support.append(get_idx_of_support(self.nFE, index, s, di, spc))
+                    # for d in range(1, self.nDomain):
+                    query.append(get_idx_of_query(self.nFE, index, s, dj, spc))
                     batch.append(support)
                     batch.append(query)
                 yield list(itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
@@ -70,9 +74,11 @@ class EMG_sampler(object):
             batch = []
             support = []
             query = []
+
+
             support.append(get_idx_of_support(self.nFE, index, self.sExtract, 0, spc))
             for d in range(1, self.nDomain):
-                query.append(get_idx_of_query(self.nFE, index, self.sExtract, d))
+                query.append(get_idx_of_query(self.nFE, index, self.sExtract, d, spc * self.nDomain))
             batch.append(support)
             batch.append(query)
             yield list(
@@ -91,12 +97,12 @@ def get_idx_from_std(index, s, t, d):
     a3 = torch.IntTensor(index['d']).eq(d).nonzero()
     return (np.intersect1d(np.intersect1d(a1.numpy(), a2.numpy()), a3.numpy()))
 
-def get_idx_of_query(nFE,index, sTrain, dQuery):
+def get_idx_of_query(nFE,index, sTrain, dQuery, spc):
+
     query = []
-    support = []
     for t in range(nFE):
         found = get_idx_from_std(index, sTrain, t, dQuery)
-        query.append((found)[torch.randperm(found.__len__())[:]])
+        query.append(found[:spc][torch.randperm(spc)])
 
     return query
 
