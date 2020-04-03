@@ -20,7 +20,7 @@ class Net(nn.Module):
         self.rect3  = SPDRectified()
         self.tangent = SPDTangentSpace(50)
         self.linear = nn.Linear(1275, 7, bias=True)
-        # self.dropout = nn.Dropout(p=0.5)
+        self.dropout = nn.Dropout(p=0.5)
 
         self.encoder = nn.Sequential(
             SPDTransform(400, 200),
@@ -30,6 +30,7 @@ class Net(nn.Module):
             SPDTransform(100, 50),
             SPDRectified(),
             SPDTangentSpace(50),
+            nn.Dropout(p=0.5),
             nn.Linear(1275, 7, bias=True)
         )
 
@@ -48,11 +49,11 @@ class Net(nn.Module):
 
 transformed_dataset = AfewDataset(train=True)
 dataloader = DataLoader(transformed_dataset, batch_size=30,
-                    shuffle=True, num_workers=4)
+                    shuffle=True, num_workers=1)
 
 transformed_dataset_val = AfewDataset(train=False)
 dataloader_val = DataLoader(transformed_dataset_val, batch_size=30,
-                    shuffle=False, num_workers=4)
+                    shuffle=False, num_workers=1)
 
 use_cuda = True
 model = Net()
