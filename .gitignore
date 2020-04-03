@@ -1,5 +1,6 @@
 # Custom
 \output
+\output\
 dataset/
 .idea/
 .idea/workspace.xml
@@ -107,3 +108,4 @@ ENV/
 
 # mypy
 .mypy_cache/
+*.pth

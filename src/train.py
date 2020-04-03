@@ -137,12 +137,15 @@ def train(opt):
         batch = next(test_iter)
         batch_x_test, batch_y_test = batch
 
-        test_x_support, test_y_support = reimannian_feat_ext(opt,
-                                   batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr],
-                                   batch_y_test[:opt.classes_per_it_tr * opt.num_support_tr])
-        test_x, test_y = reimannian_feat_ext(opt,batch_x_test, batch_y_test)
-        test_x_support, test_y_support = test_x_support.to(device), test_y_support.to(device)
+        Cref = mean.mean_riemann(covariance.covariances(
+            np.swapaxes(batch_x_test[:opt.classes_per_it_tr * opt.num_support_tr].cpu().numpy(), 1, 2),
+            estimator='scm'))
+
+        test_x, test_y = reimannian_feat_ext(opt, batch_x_test, batch_y_test, Cref)
         test_x, test_y = test_x.to(device), test_y.to(device)
+        test_x_support, test_y_support = test_x[:opt.classes_per_it_tr * opt.num_support_tr],\
+                                         test_y[:opt.classes_per_it_tr * opt.num_support_tr]
+
         del batch_x_test, batch_y_test, batch, test_iter, testDataloader
         torch.cuda.empty_cache()
 
@@ -166,7 +169,10 @@ def train(opt):
                 print('\n')
                 batch_x, batch_y = batch
                 # feature extraction
-                x, y = reimannian_feat_ext(opt, batch_x[0:int(batch_x.shape[0]/2)], batch_y[0:int(batch_x.shape[0]/2)])
+                x, y = reimannian_feat_ext(opt,
+                                           batch_x[0:int(batch_x.shape[0]/2)],
+                                           batch_y[0:int(batch_x.shape[0]/2)],
+                                           Cref)
                 # torch.unsqueeze(test_x_support, 1)
                 x = torch.cat((x.to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
@@ -194,7 +200,8 @@ def train(opt):
                 # validation features extraction
                 x, y = reimannian_feat_ext(opt,
                                            batch_x[int(batch_x.shape[0] / 2):],
-                                           batch_y[int(batch_x.shape[0] / 2):])
+                                           batch_y[int(batch_x.shape[0] / 2):],
+                                           Cref)
                 x = torch.cat((x.to(device), test_x_support), 0)
                 # x, y = x.to(device), y.to(device)
 
@@ -267,12 +274,6 @@ def train(opt):
         torch.cuda.empty_cache()
 
 
-
-
-
-
-
-
 def test(opt, test_dataloader, model):
     '''
     Test the model trained with the prototypical learning algorithm
@@ -314,13 +315,15 @@ def eval(opt):
          model=model)
 
 # def featExt_and_compLossAcc(opt, model, x_train, y_train):
-def reimannian_feat_ext(opt, x_train, y_train):
+def reimannian_feat_ext(opt, x_train, y_train, Cref = None):
 
     device = 'cuda:0' if torch.cuda.is_available() and opt.cuda else 'cpu'
 
     # Todo: Riemannian Feature Extraction
     cov = covariance.covariances(np.swapaxes(x_train[:].cpu().numpy(),1, 2),estimator='scm')
-    Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+    if not isinstance(Cref,np.ndarray):
+        Cref = mean.mean_riemann(cov[:opt.classes_per_it_tr * opt.num_support_tr])
+
     x_feat_train = torch.FloatTensor(tangentspace.tangent_space(cov, Cref))
     # Todo: Forward and Caculate Loss
     x, y = x_feat_train.to(device), y_train.to(device)
