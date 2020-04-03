@@ -180,7 +180,7 @@ def train(opt):
                 # start to train
                 model.train()
                 optim.zero_grad()
-                x_train = model(torch.cat((x_train.unsqueeze(1), x_test_support.unsqueeze(1)),0))
+                x_train = model(torch.cat((x_train, x_test_support),0))
 
                 # loss and accuracy
                 loss, acc, y_hat = loss_fn(x_train,
@@ -206,7 +206,7 @@ def train(opt):
                 y_val = y[int(x.shape[0] / 2):]
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
-                x_val = model(torch.cat((x_val.unsqueeze(1), x_test_support.unsqueeze(1)), 0))
+                x_val = model(torch.cat((x_val, x_test_support), 0))
 
                 # loss and accuracy
                 loss, acc, y_hat = loss_fn(x_val,
@@ -221,7 +221,7 @@ def train(opt):
 
                 # Predict the Test subject data
                 model.eval()
-                loss, acc, y_hat = loss_fn(model(x_test.unsqueeze(1)),
+                loss, acc, y_hat = loss_fn(model(x_test),
                                            target=y_test,
                                            n_support=opt.num_support_tr)
 

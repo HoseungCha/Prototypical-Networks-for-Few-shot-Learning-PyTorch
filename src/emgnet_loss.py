@@ -50,8 +50,12 @@ def emg_loss(input, target, n_support):
     - n_support: number of samples to keep in account when computing
       barycentres, for each one of the current classes
     '''
-    y = target.to('cpu')
-    x = input.to('cpu')
+    # y = target.to('cpu')
+    # x = input.to('cpu')
+
+    x = input
+    y = target
+
 
     def supp_idxs(c):
         # FIXME when torch will support where as np
@@ -71,7 +75,8 @@ def emg_loss(input, target, n_support):
     # FIXME when torch will support where as np
     query_idxs = torch.stack(list(map(lambda c: y.eq(c).nonzero()[n_support:], classes))).view(-1)
 
-    query_samples = input.to('cpu')[query_idxs]
+    # query_samples = input.to('cpu')[query_idxs]
+    query_samples = input[query_idxs]
 
     # distance between samples in query samples, prototypes
     dists = euclidean_dist(query_samples, prototypes)
@@ -81,6 +86,7 @@ def emg_loss(input, target, n_support):
     target_inds = torch.arange(0, n_classes)
     target_inds = target_inds.view(n_classes, 1, 1)
     target_inds = target_inds.expand(n_classes, n_query, 1).long()
+    target_inds = target_inds.to(log_p_y.device)
 
     loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
     _, y_hat = log_p_y.max(2)
