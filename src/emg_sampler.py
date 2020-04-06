@@ -67,9 +67,9 @@ class EMG_sampler(object):
                     dj = temp[1]  # query set
 
                     # support.append(get_idx_of_support(self.nFE, index, s, di, spc*self.nDomain))
-                    support.append(get_idx_of_support(self.nFE, index, s, di, spc))
-                    # for d in range(1, self.nDomain):
-                    query.append(get_idx_of_query(self.nFE, index, s, dj, spc * self.nTrlPerDomain))
+                    # support.append(get_idx_of_support(self.nFE, index, s, di, spc))
+                    for d in range(self.nDomain):
+                        query.append(get_idx_of_query(self.nFE, index, s, d, spc * self.nTrlPerDomain))
                     batch.append(support)
                     batch.append(query)
                 yield list(chain.from_iterable(chain.from_iterable(chain.from_iterable(batch))))

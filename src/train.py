@@ -174,7 +174,7 @@ def train(opt):
                                            batch_y[0:int(batch_x.shape[0]/2)],
                                            Cref)
                 # torch.unsqueeze(test_x_support, 1)
-                x = torch.cat((x.to(device), test_x_support), 0)
+                x = torch.cat((test_x_support, x.to(device)), 0)
                 # x, y = x.to(device), y.to(device)
                 optim.zero_grad()
                 model_output = model(torch.unsqueeze(x,1))
@@ -202,7 +202,7 @@ def train(opt):
                                            batch_x[int(batch_x.shape[0] / 2):],
                                            batch_y[int(batch_x.shape[0] / 2):],
                                            Cref)
-                x = torch.cat((x.to(device), test_x_support), 0)
+                x = torch.cat((test_x_support, x.to(device)), 0)
                 # x, y = x.to(device), y.to(device)
 
                 # predict the validation data with test_x_support to find out the best model for the test subject
