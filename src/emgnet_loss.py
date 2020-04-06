@@ -34,7 +34,7 @@ def euclidean_dist(x, y):
     return torch.pow(x - y, 2).sum(2)
 
 
-def emg_loss(input, target, n_support):
+def emg_loss(input, target, n_support, test_flag = None):
     '''
     Inspired by https://github.com/jakesnell/prototypical-networks/blob/master/protonets/models/few_shot.py
 
@@ -68,22 +68,41 @@ def emg_loss(input, target, n_support):
 
     # FIXME sd
     prototypes = torch.stack([x[idx_list].mean(0) for idx_list in support_idxs]) # support vector의 평균
-    # FIXME when torch will support where as np
-    query_idxs = torch.stack(list(map(lambda c: y.eq(c).nonzero()[n_support:], classes))).view(-1)
 
-    query_samples = input.to('cpu')[query_idxs]
+    if test_flag == None:
+        n_query2use = n_support * 2
+        euclidean_dist_list = torch.FloatTensor(n_classes, n_query2use, prototypes.shape[0])
+        for c in classes:
+            query_samples = input.to('cpu')[y.eq(c).nonzero()[n_support:].view(-1)]
+            dists= euclidean_dist(query_samples, prototypes)
+            for i_proto in range(prototypes.shape[0]):
+                distSorted, idxSorted = dists[:, i_proto].sort()
+                euclidean_dist_list[c, :, i_proto] = distSorted[:n_query2use]
+        euclidean_dist_list = euclidean_dist_list.view(-1, prototypes.shape[0])
+        log_p_y = F.log_softmax(-euclidean_dist_list, dim=1).view(n_classes, n_query2use, -1)
 
-    # distance between samples in query samples, prototypes
-    dists = euclidean_dist(query_samples, prototypes)
+        target_inds = torch.arange(0, n_classes)
+        target_inds = target_inds.view(n_classes, 1, 1)
+        target_inds = target_inds.expand(n_classes, n_query2use, 1).long()
 
-    log_p_y = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1)
+        loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
+        _, y_hat = log_p_y.max(2)
+        acc_val = y_hat.eq(target_inds.squeeze()).float().mean()
+    else:
+        query_idxs = torch.stack(list(map(lambda c: y.eq(c).nonzero()[n_support:], classes))).view(-1)
+        query_samples = input.to('cpu')[query_idxs]
 
-    target_inds = torch.arange(0, n_classes)
-    target_inds = target_inds.view(n_classes, 1, 1)
-    target_inds = target_inds.expand(n_classes, n_query, 1).long()
+        # distance between samples in query samples, prototypes
+        dists = euclidean_dist(query_samples, prototypes)
 
-    loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
-    _, y_hat = log_p_y.max(2)
-    acc_val = y_hat.eq(target_inds.squeeze()).float().mean()
+        log_p_y = F.log_softmax(-dists, dim=1).view(n_classes, n_query, -1)
+
+        target_inds = torch.arange(0, n_classes)
+        target_inds = target_inds.view(n_classes, 1, 1)
+        target_inds = target_inds.expand(n_classes, n_query, 1).long()
+
+        loss_val = -log_p_y.gather(2, target_inds).squeeze().view(-1).mean()
+        _, y_hat = log_p_y.max(2)
+        acc_val = y_hat.eq(target_inds.squeeze()).float().mean()
 
     return loss_val, acc_val, y_hat

@@ -2,7 +2,9 @@
 import numpy as np
 import torch
 from utils import core
-import itertools
+# import itertools
+from itertools import chain
+# chain.from_iterable
 
 class EMG_sampler(object):
     '''
@@ -39,6 +41,7 @@ class EMG_sampler(object):
         self.iterations = option.iterations
         self.nDomain = 5
         self.sExtract = sExtract
+        self.nTrlPerDomain =5
 
     def __iter__(self):
         '''
@@ -60,15 +63,16 @@ class EMG_sampler(object):
                     support = []
                     query = []
                     temp = np.random.permutation(list(range(self.nDomain)))
-                    di = temp[0]  # training
-                    dj = temp[1]  # validation
+                    di = temp[0]  # support set
+                    dj = temp[1]  # query set
 
+                    # support.append(get_idx_of_support(self.nFE, index, s, di, spc*self.nDomain))
                     support.append(get_idx_of_support(self.nFE, index, s, di, spc))
                     # for d in range(1, self.nDomain):
-                    query.append(get_idx_of_query(self.nFE, index, s, dj, spc))
+                    query.append(get_idx_of_query(self.nFE, index, s, dj, spc * self.nTrlPerDomain))
                     batch.append(support)
                     batch.append(query)
-                yield list(itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
+                yield list(chain.from_iterable(chain.from_iterable(chain.from_iterable(batch))))
 
         elif self.sExclude is None and self.sExtract is not None:
             batch = []
@@ -78,11 +82,10 @@ class EMG_sampler(object):
 
             support.append(get_idx_of_support(self.nFE, index, self.sExtract, 0, spc))
             for d in range(1, self.nDomain):
-                query.append(get_idx_of_query(self.nFE, index, self.sExtract, d, spc * self.nDomain))
+                query.append(get_idx_of_query(self.nFE, index, self.sExtract, d, spc * self.nTrlPerDomain))
             batch.append(support)
             batch.append(query)
-            yield list(
-                itertools.chain.from_iterable(itertools.chain.from_iterable(itertools.chain.from_iterable(batch))))
+            yield list(chain.from_iterable(chain.from_iterable(chain.from_iterable(batch))))
 
     def __len__(self):
         '''

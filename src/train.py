@@ -221,8 +221,7 @@ def train(opt):
                 # Predict the Test subject data
                 model.eval()
                 model_output = model(torch.unsqueeze(test_x, 1))
-                loss, acc, y_hat = loss_fn(model_output, target=test_y,
-                                    n_support=opt.num_support_tr)
+                loss, acc, y_hat = loss_fn(model_output, target=test_y,n_support=opt.num_support_tr,test_flag = 1)
 
                 print('Test Loss: {}, Test Acc: {}\n'.format(loss.item(), acc.item()))
                 time.sleep(0.01)

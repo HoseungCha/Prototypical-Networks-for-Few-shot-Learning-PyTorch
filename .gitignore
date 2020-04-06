@@ -1,6 +1,7 @@
 # Custom
 \output
-\output\
+\output
+.output
 dataset/
 .idea/
 .idea/workspace.xml
@@ -109,3 +110,16 @@ ENV/
 # mypy
 .mypy_cache/
 *.pth
+*.pth
+output/best_model_sTest_0_epoch_0.pth
+output/best_model_sTest_0_epoch_1.pth
+output/best_model_sTest_0_epoch_6.pth
+output/best_model_sTest_0_epoch_8.pth
+output/best_model_sTest_2_epoch_0.pth
+output/best_model_sTest_2_epoch_1.pth
+output/best_model_sTest_2_epoch_11.pth
+output/best_model_sTest_2_epoch_13.pth
+output/best_model_sTest_2_epoch_2.pth
+output/best_model_sTest_2_epoch_27.pth
+output/best_model_sTest_2_epoch_3.pth
+output/best_model_sTest_2_epoch_4.pth
